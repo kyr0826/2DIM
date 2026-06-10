@@ -1,6 +1,7 @@
 let video;
 let bodyPose;
 let poses = [];
+let smoothedKeypoints = {};
 
 let commonClassifier;
 let dailyClassifier;
@@ -17,8 +18,8 @@ let isAppReady = false;
 let commonItems = ["Wallet", "Phone"];
 
 const dailyItemsMap = {
-  Mon: ["Book", "Pencil", "Ruler", "Eraser"],         // 
-  Tue: ["Scissors", "Glue", "Notebook", "Pen"],       // 
+  Mon: ["SketchBook", "PencilCase", "Gloves", "Fan"], // v
+  Tue: ["TextBook", "IPad", "Perfume", "Bottle"],     // v
   Wed: ["Future", "Creative", "English", "Japanese"], // v
   Thu: ["Fan", "Reading", "Listening", "Pillcase"],   // v
   Fri: ["illustration", "N2", "Word", "SpringNote"],  // v
@@ -492,6 +493,8 @@ function initDayButtons() {
   btns.forEach((btn, i) => {
     btn.addEventListener('click', () => {
       // active 스타일 토글
+      if (itemCount >= 6) return; 
+      if (foundItems.length > 0) return;
       btns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
 
@@ -519,7 +522,7 @@ function initDayButtons() {
 function getPoint(pose, partName) {
   if (!pose || !pose.keypoints) return null;
   let kp = pose.keypoints.find(k => k.name === partName);
-  if (kp?.confidence > 0.1) return kp;
+  if (kp?.confidence > 0.05) return kp;
   return null;
 }
 
@@ -568,32 +571,32 @@ function drawEquipment(pose) {
     image(imgHelmet, 0, 0, hs, hs * 1.2); pop();
   }
 
-  // 검
-  if (itemCount >= 6 && rElbow && rWrist) {
-    let armLen = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y);
-    let a  = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
-    let sw = armLen * 3.0;
-    push(); translate(rWrist.x, rWrist.y); rotate(a);
-    image(imgSword, sw * 0.35, 0, sw, sw * 0.2); pop();
-  }
+  // 검 — 손목 기준, 팔 방향으로 뻗음
+if (itemCount >= 6 && rElbow && rWrist) {
+  let armLen = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y);
+  let a  = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
+  let sw = armLen * 3.0;
+  push(); translate(rWrist.x, rWrist.y); rotate(a);
+  image(imgSword, sw * 0.5, 0, sw, sw * 0.3); pop();  // 오프셋, 크기 조정
+}
 
-  // 왼 장갑
-  if (itemCount >= 3 && lWrist && lElbow) {
-    let armLen = dist(lElbow.x, lElbow.y, lWrist.x, lWrist.y);
-    let a = atan2(lWrist.y - lElbow.y, lWrist.x - lElbow.x);
-    let h = armLen * 1.6;
-    push(); translate(lWrist.x, lWrist.y); rotate(a - PI / 2); scale(-1, 1);
-    image(imgGlove, 0, 0, h * 0.7, h * 0.9); pop();
-  }
+// 왼 장갑 — 손목 중심, 손가락이 위를 향하게
+if (itemCount >= 3 && lWrist && lElbow) {
+  let armLen = dist(lElbow.x, lElbow.y, lWrist.x, lWrist.y);
+  let a = atan2(lWrist.y - lElbow.y, lWrist.x - lElbow.x);
+  let h = armLen * 1.6;
+  push(); translate(lWrist.x, lWrist.y); rotate(a - PI / 2); scale(-1, 1);
+  image(imgGlove, 0, 0, h * 0.7, h * 0.9); pop();  // y오프셋 제거
+}
 
-  // 오른 장갑
-  if (itemCount >= 4 && rWrist && rElbow) {
-    let armLen = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y);
-    let a = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
-    let h = armLen * 1.6;
-    push(); translate(rWrist.x, rWrist.y); rotate(a - PI / 2);
-    image(imgGlove, 0, 0, h * 0.7, h * 0.9); pop();
-  }  
+// 오른 장갑
+if (itemCount >= 4 && rWrist && rElbow) {
+  let armLen = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y);
+  let a = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
+  let h = armLen * 1.6;
+  push(); translate(rWrist.x, rWrist.y); rotate(a - PI / 2);
+  image(imgGlove, 0, 0, h * 0.7, h * 0.9); pop();  // y오프셋 제거
+}
 
   pop();
 }
@@ -607,7 +610,6 @@ function mapPoseToFrame(pose) {
   let fw = width  - FRAME_PAD * 2;
   let fh = height - FRAME_PAD * 2;
 
-  // ml5는 video 엘리먼트의 실제 캡처 해상도(videoWidth/videoHeight) 기준으로 좌표를 줌
   let srcW = video.elt.videoWidth  || width;
   let srcH = video.elt.videoHeight || height;
 
@@ -616,11 +618,30 @@ function mapPoseToFrame(pose) {
 
   let mapped = { keypoints: [] };
   for (let kp of pose.keypoints) {
+    let mx = fx + kp.x * scaleX;
+    let my = fy + kp.y * scaleY;
+
+    if (smoothedKeypoints[kp.name]) {
+      if(kp.confidence > 0.05)
+      {
+        mx = lerp(smoothedKeypoints[kp.name].x, mx, 0.1);
+        my = lerp(smoothedKeypoints[kp.name].y, my, 0.1);
+      }
+      else
+      {
+        mx = smoothedKeypoints[kp.name].x;
+        my = smoothedKeypoints[kp.name].y;
+      }
+      
+    }
+    
+    smoothedKeypoints[kp.name] = { x: mx, y: my };
+
     mapped.keypoints.push({
       name:       kp.name,
       confidence: kp.confidence,
-      x: fx + kp.x * scaleX,
-      y: fy + kp.y * scaleY,
+      x: mx,
+      y: my,
     });
   }
   return mapped;
