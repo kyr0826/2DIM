@@ -17,11 +17,11 @@ let isAppReady = false;
 let commonItems = ["Wallet", "Phone"];
 
 const dailyItemsMap = {
-  Mon: ["Book", "Pencil", "Ruler", "Eraser"],
-  Tue: ["Scissors", "Glue", "Notebook", "Pen"],
-  Wed: ["Future", "Creative", "English", "Japanese"],
-  Thu: ["Cup", "Bottle", "Bag", "Umbrella"],
-  Fri: ["Hat", "Jacket", "Shoes", "Watch"],
+  Mon: ["Book", "Pencil", "Ruler", "Eraser"],         // 
+  Tue: ["Scissors", "Glue", "Notebook", "Pen"],       // 
+  Wed: ["Future", "Creative", "English", "Japanese"], // v
+  Thu: ["Fan", "Reading", "Listening", "Pillcase"],   // v
+  Fri: ["illustration", "N2", "Word", "SpringNote"],  // v
 };
 
 let dailyItems = [];
