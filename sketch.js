@@ -494,7 +494,7 @@ function initDayButtons() {
     btn.addEventListener('click', () => {
       // active 스타일 토글
       if (itemCount >= 6) return; 
-      if (foundItems.length > 0) return;
+      if (foundItems.length > 2) return;
       btns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
 
