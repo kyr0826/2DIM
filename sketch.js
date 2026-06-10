@@ -2,102 +2,405 @@ let video;
 let bodyPose;
 let poses = [];
 
-// [AI 분류기 변수]
 let commonClassifier;
 let dailyClassifier;
 
-let currentLabel = "요일을 선택해주세요"; 
-let activeModelName = "대기중"; 
+let currentLabel = "요일을 선택해주세요";
+let activeModelName = "대기중";
 
 let imgBody, imgShoulder, imgGlove, imgHelmet, imgSword;
 
-let itemCount = 0; 
-let isDailyLoaded = false; 
+let itemCount = 0;
+let isDailyLoaded = false;
+let isAppReady = false;
 
-// 카메라 예열 확인용 변수
-let isAppReady = false; 
-
-// 실제 학습시킨 TM 클래스명 (대소문자 무관하게 작동함)
 let commonItems = ["Wallet", "Phone"];
 
-// ✅ [버그 수정 1] 요일별 dailyItems 개별 정의
-//    → 각 요일 모델의 실제 클래스명에 맞게 수정하세요
 const dailyItemsMap = {
-  Mon: ["Book", "Pencil", "Ruler", "Eraser"],      // 월요일 모델 클래스명
-  Tue: ["Scissors", "Glue", "Notebook", "Pen"],    // 화요일 모델 클래스명
-  Wed: ["Future", "Creative", "English", "Japanese"], // 수요일 모델 클래스명
-  Thu: ["Cup", "Bottle", "Bag", "Umbrella"],        // 목요일 모델 클래스명
-  Fri: ["Hat", "Jacket", "Shoes", "Watch"],         // 금요일 모델 클래스명
+  Mon: ["Book", "Pencil", "Ruler", "Eraser"],
+  Tue: ["Scissors", "Glue", "Notebook", "Pen"],
+  Wed: ["Future", "Creative", "English", "Japanese"],
+  Thu: ["Cup", "Bottle", "Bag", "Umbrella"],
+  Fri: ["Hat", "Jacket", "Shoes", "Watch"],
 };
 
-let dailyItems = []; // 선택된 요일의 아이템 (버튼 누르면 갱신됨)
-let selectedDay = ""; // 현재 선택된 요일
+let dailyItems = [];
+let selectedDay = "";
+let foundItems = [];
+let activeTargetInView = "";
 
-let foundItems = []; 
-let activeTargetInView = ""; 
+let currentConfidence = 0;
+let holdTime = 0;
+const REQUIRED_TIME = 1000;
 
-// [시간 게이지용 변수]
-let currentConfidence = 0;  
-let holdTime = 0;           
-const REQUIRED_TIME = 1000; 
-
-// ✅ [버그 수정 2] classifyVideo 루프 안전 제어용 플래그
 let isClassifying = false;
+
+// ── UI 연출용 변수 ──────────────────────────────
+let flashAlpha = 0;        // 아이템 획득 시 화면 플래시
+let flashItemName = "";    // 획득된 아이템 이름 (중앙 팝업)
+let flashTextAlpha = 0;    // 획득 텍스트 페이드
+
+// ── 프레임 레이아웃 상수 ─────────────────────────
+const FRAME_PAD = 20;      // 외곽 여백 (px)
+const FRAME_R   = 24;      // 모서리 반지름
+
+// 장비 아이콘 정의 (단계 순서대로)
+const GEAR_ICONS = ["🛡", "🦾", "🧤", "🧤", "⛑", "⚔"];
+const GEAR_LABELS = ["몸통", "견갑", "왼손", "오른손", "투구", "검"];
 
 function preload() {
   bodyPose = ml5.bodyPose({ flipped: true });
   commonClassifier = ml5.imageClassifier('http://127.0.0.1:5500/Models/Common/model.json');
-  
-  imgBody = loadImage('Images/BodyArmor.png');
-  imgShoulder = loadImage('Images/Shoulder.png'); 
-  imgGlove = loadImage('Images/Hand.png');        
-  imgHelmet = loadImage('Images/Hellmet.png');
-  imgSword = loadImage('Images/Sword.png');
+
+  imgBody     = loadImage('Images/BodyArmor.png');
+  imgShoulder = loadImage('Images/Shoulder.png');
+  imgGlove    = loadImage('Images/Hand.png');
+  imgHelmet   = loadImage('Images/Hellmet.png');
+  imgSword    = loadImage('Images/Sword.png');
 }
 
 function setup() {
-  createCanvas(640, 480);
+  // 뷰포트 전체를 세로 거울로 사용
+  let cnv = createCanvas(windowWidth, windowHeight);
+  cnv.parent('canvas-wrap');
+
   video = createCapture(VIDEO, { flipped: true });
-  video.size(640, 480);
+  // video.size(windowWidth, windowHeight);
   video.hide();
-  
+
   bodyPose.detectStart(video, gotPoses);
   imageMode(CENTER);
 
-  createDayButtons();
+  initDayButtons();
 
-  // 카메라 예열 후 분류 시작
-  setTimeout(() => { 
-    isAppReady = true; 
-    console.log("카메라 예열 완료! 이제 인식 시작합니다.");
-    classifyVideo(); // ✅ 예열 완료 후에 분류 시작 (setup에서 즉시 호출 제거)
-  }, 2000); 
+  setTimeout(() => {
+    isAppReady = true;
+    classifyVideo();
+  }, 2000);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  //video.size(windowWidth, windowHeight);
 }
 
 function draw() {
-  push();
-  imageMode(CORNER);
-  image(video, 0, 0, width, height);
-  pop();
+  // ── 0. 배경: 외곽 영역을 어두운 색으로 채움 ──
+  background(18, 18, 22);
 
+  // ── 프레임 내부 영역 계산 ──
+  let fx = FRAME_PAD;
+  let fy = FRAME_PAD;
+  let fw = width  - FRAME_PAD * 2;
+  let fh = height - FRAME_PAD * 2;
+
+  // ── 1. 둥근 클리핑 마스크로 카메라 렌더 ──
+  push();
+  // drawingContext는 p5의 내부 캔버스 2D 컨텍스트
+  drawingContext.save();
+  drawingContext.beginPath();
+  drawingContext.roundRect(fx, fy, fw, fh, FRAME_R);
+  drawingContext.clip();
+
+  imageMode(CORNER);
+  image(video, fx, fy, fw, fh);
+
+  // 장비 오버레이 (클립 안에서)
   if (poses.length > 0) {
     let pose = poses[0];
-    drawDebugPoints(pose);
-    drawEquipment(pose);
+    drawEquipment(mapPoseToFrame(pose));
   }
 
-  checkLevelUp(); 
-  drawProgressBar();
-  drawStatusUI();
-  drawAIFeedback();
+  // 획득 플래시 (프레임 안)
+  if (flashAlpha > 0) {
+    noStroke();
+    fill(255, 220, 80, flashAlpha);
+    rect(fx, fy, fw, fh);
+    flashAlpha = max(0, flashAlpha - 8);
+  }
+
+  drawingContext.restore();
+  pop();
+
+  // ── 2. 프레임 테두리 + 외곽 그림자 효과 ──
+  drawOuterFrame(fx, fy, fw, fh);
+
+  checkLevelUp();
+
+  // ── HUD 레이어 ──
+  drawTopBar();        // 상단: 요일/모델 상태
+  drawGearStrip();     // 우측: 장비 슬롯 스트립
+  drawScanFeedback();  // 하단: 인식 피드백 + 게이지
+  drawAcquirePopup();  // 중앙: 아이템 획득 팝업
 }
 
+// ────────────────────────────────────────────────
+// 외곽 프레임 — 얇은 테두리 + 내측 그라디언트 비네트
+// ────────────────────────────────────────────────
+function drawOuterFrame(fx, fy, fw, fh) {
+  // 내측 비네트 (4개 방향 그라디언트)
+  let vDepth = 80; // 비네트 깊이
+
+  // 상단
+  for (let i = 0; i < vDepth; i++) {
+    let a = map(i, 0, vDepth, 90, 0);
+    noStroke(); fill(0, 0, 0, a);
+    rect(fx, fy + i, fw, 1);
+  }
+  // 하단
+  for (let i = 0; i < vDepth; i++) {
+    let a = map(i, 0, vDepth, 90, 0);
+    noStroke(); fill(0, 0, 0, a);
+    rect(fx, fy + fh - 1 - i, fw, 1);
+  }
+  // 좌측
+  for (let i = 0; i < vDepth * 0.6; i++) {
+    let a = map(i, 0, vDepth * 0.6, 60, 0);
+    noStroke(); fill(0, 0, 0, a);
+    rect(fx + i, fy, 1, fh);
+  }
+  // 우측
+  for (let i = 0; i < vDepth * 0.6; i++) {
+    let a = map(i, 0, vDepth * 0.6, 60, 0);
+    noStroke(); fill(0, 0, 0, a);
+    rect(fx + fw - 1 - i, fy, 1, fh);
+  }
+
+  // 프레임 테두리 (바깥쪽 밝은 선 + 안쪽 어두운 선)
+  noFill();
+  strokeWeight(1);
+  stroke(255, 255, 255, 18);
+  rect(fx - 1, fy - 1, fw + 2, fh + 2, FRAME_R + 1);
+
+  strokeWeight(1.5);
+  stroke(255, 255, 255, 40);
+  rect(fx, fy, fw, fh, FRAME_R);
+
+  strokeWeight(1);
+  stroke(0, 0, 0, 80);
+  rect(fx + 1, fy + 1, fw - 2, fh - 2, FRAME_R - 1);
+
+  noStroke();
+}
+
+// ────────────────────────────────────────────────
+// 상단 바 — 거울 상단에 얇게
+// ────────────────────────────────────────────────
+function drawTopBar() {
+  let fx = FRAME_PAD, fy = FRAME_PAD, fw = width - FRAME_PAD * 2;
+
+  // 상단 그라디언트 페이드 (프레임 내부 — 비네트에서 이미 처리하므로 얇게만)
+  for (let i = 0; i < 44; i++) {
+    let a = map(i, 0, 44, 100, 0);
+    noStroke(); fill(0, 0, 0, a);
+    rect(fx, fy + i, fw, 1);
+  }
+
+  let barY = fy + 22;
+
+  // 좌: 모델 상태
+  fill(255, 255, 255, 150);
+  textAlign(LEFT, CENTER);
+  textSize(12);
+  text(activeModelName, fx + 18, barY);
+
+  // 중앙: 진행 카운트
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(15);
+  text(`${itemCount} / 6`, fx + fw / 2, barY);
+
+  // 우: 선택된 요일
+  if (selectedDay !== "") {
+    let dayLabel = { Mon:"월요일", Tue:"화요일", Wed:"수요일", Thu:"목요일", Fri:"금요일" }[selectedDay];
+    fill(255, 210, 60);
+    textAlign(RIGHT, CENTER);
+    textSize(13);
+    text(dayLabel, fx + fw - 18, barY);
+  }
+}
+
+// ────────────────────────────────────────────────
+// 우측 장비 슬롯 스트립 — 세로 화면에 맞게
+// ────────────────────────────────────────────────
+function drawGearStrip() {
+  let fx = FRAME_PAD, fy = FRAME_PAD, fw = width - FRAME_PAD * 2, fh = height - FRAME_PAD * 2;
+  let slotSize = 56;
+  let padding  = 10;
+  let totalH   = GEAR_ICONS.length * (slotSize + padding) - padding;
+  let startX   = fx + fw - slotSize - 16;
+  let startY   = fy + (fh - totalH) / 2;
+
+  for (let i = 0; i < GEAR_ICONS.length; i++) {
+    let x = startX;
+    let y = startY + i * (slotSize + padding);
+    let acquired = itemCount > i;
+
+    // 슬롯 배경
+    noStroke();
+    if (acquired) {
+      // 획득 — 골드 + 미세한 테두리
+      fill(255, 210, 60, 230);
+      rect(x, y, slotSize, slotSize, 10);
+      stroke(255, 230, 100, 180);
+      strokeWeight(1.5);
+      noFill();
+      rect(x, y, slotSize, slotSize, 10);
+      noStroke();
+    } else {
+      fill(0, 0, 0, 100);
+      rect(x, y, slotSize, slotSize, 10);
+      stroke(255, 255, 255, 25);
+      strokeWeight(1);
+      noFill();
+      rect(x, y, slotSize, slotSize, 10);
+      noStroke();
+    }
+
+    // 아이콘
+    textAlign(CENTER, CENTER);
+    textSize(24);
+    fill(acquired ? color(30, 30, 30) : color(255, 255, 255, 55));
+    text(GEAR_ICONS[i], x + slotSize / 2, y + slotSize / 2 - 6);
+
+    // 라벨
+    textSize(9);
+    fill(acquired ? color(40, 40, 40) : color(255, 255, 255, 45));
+    text(GEAR_LABELS[i], x + slotSize / 2, y + slotSize / 2 + 15);
+  }
+}
+
+// ────────────────────────────────────────────────
+// 하단 인식 피드백 패널
+// ────────────────────────────────────────────────
+function drawScanFeedback() {
+  if (itemCount >= 6) return;
+
+  let cleanLabel = currentLabel.replace(/\s+/g, '').toLowerCase();
+  let isNone = cleanLabel.includes('none') || cleanLabel === '' || !isAppReady;
+
+  let validTargets = itemCount < 2 ? commonItems : dailyItems;
+  let remaining = validTargets.filter(item => !foundItems.includes(item));
+
+  // 현재 인식 중인 남은 아이템 (강조용)
+  let matchingItem = remaining.find(t =>
+    cleanLabel.includes(t.replace(/\s+/g, '').toLowerCase())
+  );
+  let isMatch = !!matchingItem && currentConfidence >= 0.8;
+
+  // ── 준비물 칩 영역 ──────────────────────────────
+  // 패널 높이는 칩 행 + 게이지 바 + 인식 텍스트
+  let chipH   = 28;
+  let panelW  = min(width - FRAME_PAD * 2 - 24, 560);
+  let panelH  = chipH + 48;
+  let px      = FRAME_PAD + (width - FRAME_PAD * 2 - panelW) / 2;
+  let py      = height - FRAME_PAD - panelH - 84; // 하단 요일 바(72px) 위에 위치
+
+  noStroke();
+  fill(0, 0, 0, 160);
+  rect(px, py, panelW, panelH, 10);
+
+  // 요일 미선택 안내
+  if (itemCount >= 2 && dailyItems.length === 0) {
+    textAlign(CENTER, CENTER);
+    textSize(13);
+    fill(255, 200, 60);
+    text("아래 버튼으로 요일을 선택하세요", px + panelW / 2, py + panelH / 2);
+    return;
+  }
+
+  // 준비물 칩 그리기 (순서 무관 — 전체 나열)
+  let chipPad  = 10;
+  let chipR    = 6;
+  // 칩 너비를 아이템 수에 따라 동적 계산
+  let chipW    = (panelW - chipPad * (remaining.length + 1)) / max(remaining.length, 1);
+  chipW        = constrain(chipW, 50, 120);
+
+  // 칩들을 중앙 정렬
+  let totalChipW = remaining.length * chipW + (remaining.length - 1) * chipPad;
+  let chipStartX = px + (panelW - totalChipW) / 2;
+
+  textAlign(CENTER, CENTER);
+  for (let i = 0; i < remaining.length; i++) {
+    let cx = chipStartX + i * (chipW + chipPad);
+    let cy = py + 8;
+    let isActive = (remaining[i] === matchingItem) && isMatch;
+    let isScanning = (remaining[i] === matchingItem) && !isNone && currentConfidence >= 0.8;
+
+    // 칩 배경
+    if (isActive) {
+      fill(80, 220, 120, 230);   // 인식 매칭 중 → 초록
+    } else if (remaining[i] === activeTargetInView && holdTime > 0) {
+      fill(80, 220, 120, 120);   // 게이지 차는 중 → 연초록
+    } else {
+      fill(255, 255, 255, 30);   // 대기 중 → 반투명 흰색
+    }
+    rect(cx, cy, chipW, chipH, chipR);
+
+    // 칩 텍스트
+    textSize(12);
+    fill(isActive ? color(20, 20, 20) : color(220, 220, 220));
+    text(remaining[i], cx + chipW / 2, cy + chipH / 2);
+  }
+
+  // ── 게이지 바 ──────────────────────────────────
+  let progress = constrain(holdTime / REQUIRED_TIME, 0, 1);
+  let barW  = panelW - 32;
+  let barX  = px + 16;
+  let barY  = py + chipH + 16;
+
+  fill(40, 40, 40);
+  rect(barX, barY, barW, 8, 4);
+
+  if (isMatch) fill(80, 220, 120);
+  else         fill(60, 60, 60);
+  rect(barX, barY, barW * progress, 8, 4);
+
+  // ── 인식 상태 텍스트 ───────────────────────────
+  textAlign(CENTER, TOP);
+  textSize(11);
+  if (isNone) {
+    fill(140, 140, 140);
+    text("카메라에 준비물을 보여주세요", px + panelW / 2, barY + 12);
+  } else if (isMatch) {
+    fill(80, 220, 120);
+    text(`${currentLabel}  ${Math.floor(currentConfidence * 100)}%`, px + panelW / 2, barY + 12);
+  } else {
+    fill(200, 120, 120);
+    text(`${currentLabel}  ${Math.floor(currentConfidence * 100)}%`, px + panelW / 2, barY + 12);
+  }
+}
+
+// ────────────────────────────────────────────────
+// 중앙 획득 팝업 (플래시 + 텍스트)
+// ────────────────────────────────────────────────
+function drawAcquirePopup() {
+  if (flashTextAlpha <= 0) return;
+
+  push();
+  textAlign(CENTER, CENTER);
+
+  // 획득 텍스트
+  textSize(32);
+  fill(255, 210, 60, flashTextAlpha);
+  text(`✔ ${flashItemName} 장착!`, width / 2, height / 2);
+
+  textSize(16);
+  fill(255, 255, 255, flashTextAlpha * 0.7);
+  text(`${itemCount} / 6 장비 준비 완료`, width / 2, height / 2 + 42);
+
+  flashTextAlpha = max(0, flashTextAlpha - 3);
+  pop();
+}
+
+// ────────────────────────────────────────────────
+// 로직 함수들 (기존과 동일, 획득 시 연출 추가)
+// ────────────────────────────────────────────────
 function gotPoses(results) {
   poses = results;
 }
 
 function classifyVideo() {
-  // ✅ [버그 수정 2] 이미 분류 중이면 중복 호출 방지
   if (isClassifying) return;
 
   if (itemCount < 2) {
@@ -106,36 +409,32 @@ function classifyVideo() {
     commonClassifier.classify(video, gotResult);
   } else if (itemCount >= 2 && isDailyLoaded) {
     isClassifying = true;
-    activeModelName = `Daily Model (${selectedDay})`;
+    activeModelName = `Daily  ·  ${selectedDay}`;
     dailyClassifier.classify(video, gotResult);
   } else if (itemCount >= 2 && !isDailyLoaded) {
-    // 요일 미선택 상태 → 500ms 후 재시도 (isClassifying은 false 유지)
-    currentLabel = "⚠️ 아래 버튼으로 요일을 선택하세요!";
-    setTimeout(classifyVideo, 500); 
+    currentLabel = "요일 모델 대기 중";
+    setTimeout(classifyVideo, 500);
   }
 }
 
 function gotResult(results) {
-  isClassifying = false; // ✅ 분류 완료 → 플래그 해제
+  isClassifying = false;
   currentLabel = results[0].label;
   currentConfidence = results[0].confidence;
-  classifyVideo(); // 다음 분류 요청
+  classifyVideo();
 }
 
 function checkLevelUp() {
-  // 예열 안 끝났거나 화면에 사람이 없으면 차단
   if (!isAppReady) {
     holdTime = 0;
     activeTargetInView = "";
     return;
   }
 
-  // ✅ [버그 수정 1] 현재 단계에 맞는 올바른 아이템 목록 사용
   let validTargets;
   if (itemCount < 2) {
     validTargets = commonItems;
   } else {
-    // dailyItems가 비어있으면 (요일 미선택) 게이지 진행 안 함
     if (dailyItems.length === 0) {
       holdTime = 0;
       activeTargetInView = "";
@@ -149,275 +448,180 @@ function checkLevelUp() {
 
   for (let target of validTargets) {
     let cleanTarget = target.replace(/\s+/g, '').toLowerCase();
-    
     if (cleanCurrentLabel.includes(cleanTarget) && !foundItems.includes(target)) {
       isTargetMatch = true;
-      activeTargetInView = target; 
-      break; 
+      activeTargetInView = target;
+      break;
     }
   }
 
-  if (isTargetMatch && currentConfidence >= 0.6) {
-    holdTime += deltaTime; 
+  if (isTargetMatch && currentConfidence >= 0.8) {
+    holdTime += deltaTime;
   } else {
-    holdTime -= deltaTime * 1.5; 
+    holdTime -= deltaTime * 1.5;
     if (holdTime < 0) {
       holdTime = 0;
-      activeTargetInView = ""; 
+      activeTargetInView = "";
     }
   }
 
   if (holdTime >= REQUIRED_TIME) {
-    foundItems.push(activeTargetInView); 
+    foundItems.push(activeTargetInView);
     itemCount++;
-    holdTime = 0; 
+
+    // ── 획득 연출 트리거 ──
+    flashAlpha    = 120;
+    flashItemName = activeTargetInView;
+    flashTextAlpha = 255;
+
+    holdTime = 0;
     activeTargetInView = "";
 
-    // ✅ itemCount가 2가 됐을 때 Daily 모델이 이미 로드됐으면 즉시 전환
     if (itemCount === 2 && isDailyLoaded && !isClassifying) {
       classifyVideo();
     }
   }
 }
 
-function drawProgressBar() {
-  if (itemCount < 6) {
-    let progress = constrain(holdTime / REQUIRED_TIME, 0, 1); 
-    let angle = progress * TWO_PI; 
-
-    push();
-    translate(width / 2, height / 2);
-
-    noFill();
-    stroke(255, 255, 255, 80);
-    strokeWeight(20); 
-    circle(0, 0, 180); 
-
-    if (holdTime > 0) {
-      stroke(0, 255, 100);
-      strokeWeight(20);
-      strokeCap(ROUND); 
-      arc(0, 0, 180, 180, -PI / 2, -PI / 2 + angle);
-    }
-
-    fill(255);
-    noStroke();
-    textAlign(CENTER, CENTER);
-    textSize(36); 
-    text(`${Math.floor(progress * 100)}%`, 0, -10);
-    
-    textSize(18);
-    if (holdTime > 0) {
-       fill(0, 255, 100);
-       text(`[${activeTargetInView}] 장착 중!`, 0, 40);
-    } else {
-       fill(200, 200, 200);
-       // 요일 미선택 시 안내 메시지
-       if (itemCount >= 2 && dailyItems.length === 0) {
-         fill(255, 200, 0);
-         text(`요일을 선택하세요!`, 0, 40);
-       } else {
-         text(`대기 중...`, 0, 40);
-       }
-    }
-    pop();
-  }
-}
-
-function drawAIFeedback() {
-  let validTargets = (itemCount < 2) ? commonItems : dailyItems;
-  let remainingItems = validTargets.filter(item => !foundItems.includes(item));
-  let targetText = (remainingItems.length > 0) ? remainingItems.join(", ") : "완료!";
-
-  push();
-  translate(width / 2 - 150, height - 90); 
-  
-  fill(0, 180);
-  noStroke();
-  rect(0, 0, 300, 75, 10);
-
-  fill(255, 255, 0);
-  textSize(14);
-  textAlign(LEFT, TOP);
-  if (itemCount < 6) {
-    text(`🎯 남은 준비물: ${targetText}`, 15, 10);
-  } else {
-    text(`🎉 모든 장비 장착 완료!`, 15, 10);
-  }
-
-  fill(255);
-  textSize(14);
-  let percent = Math.floor(currentConfidence * 100);
-  text(`👁️ 현재 인식중: ${currentLabel} (${percent}%)`, 15, 35);
-
-  fill(100);
-  rect(15, 55, 270, 8, 4);
-  
-  if (currentConfidence > 0.8) fill(0, 255, 100); 
-  else fill(255, 100, 100); 
-  rect(15, 55, 270 * currentConfidence, 8, 4);
-  
-  pop();
-}
-
-function createDayButtons() {
-  let days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+function initDayButtons() {
+  // HTML의 .day-btn 버튼들과 연동
+  let days   = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   let labels = ['월요일', '화요일', '수요일', '목요일', '금요일'];
-  
-  for (let i = 0; i < days.length; i++) {
-    let btn = createButton(labels[i]);
-    btn.position(10 + (i * 70), 500); 
-    btn.mousePressed(() => {
-      // ✅ [버그 수정 1] 요일 선택 시 해당 요일의 dailyItems로 교체
-      selectedDay = days[i];
-      dailyItems = dailyItemsMap[days[i]];
+  let btns   = document.querySelectorAll('.day-btn');
 
+  btns.forEach((btn, i) => {
+    btn.addEventListener('click', () => {
+      // active 스타일 토글
+      btns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      selectedDay   = days[i];
+      dailyItems    = dailyItemsMap[days[i]];
       isDailyLoaded = false;
-      isClassifying = false; // 혹시 stuck된 분류 루프 리셋
-      currentLabel = `${labels[i]} 모델 로딩중...`;
-      
+      isClassifying = false;
+      currentLabel  = `${labels[i]} 로딩 중…`;
+
       dailyClassifier = ml5.imageClassifier(
-        `http://127.0.0.1:5500/Models/${days[i]}/model.json`, 
+        `http://127.0.0.1:5500/Models/${days[i]}/model.json`,
         () => {
           isDailyLoaded = true;
-          currentLabel = `${labels[i]} 모델 로드 완료!`;
-          console.log(`${labels[i]} 모델 로드됨. dailyItems:`, dailyItems);
-
-          // ✅ 모델 로드 완료 시점에 itemCount >= 2 이면 즉시 Daily 모델로 전환
-          if (itemCount >= 2 && !isClassifying) {
-            classifyVideo();
-          }
+          currentLabel  = `${labels[i]} 준비 완료`;
+          if (itemCount >= 2 && !isClassifying) classifyVideo();
         }
       );
     });
-  }
+  });
 }
 
+// ────────────────────────────────────────────────
+// 장비 렌더링 (기존과 동일)
+// ────────────────────────────────────────────────
 function getPoint(pose, partName) {
   if (!pose || !pose.keypoints) return null;
-  let keypoint = pose.keypoints.find(k => k.name === partName);
-  if (keypoint?.confidence > 0.1) return keypoint;
+  let kp = pose.keypoints.find(k => k.name === partName);
+  if (kp?.confidence > 0.1) return kp;
   return null;
 }
 
-function drawDebugPoints(pose) {
-  if (!pose || !pose.keypoints) return;
-  fill(255, 255, 255, 150);
-  noStroke();
-  for (let i = 0; i < pose.keypoints.length; i++) {
-    let kp = pose.keypoints[i];
-    if (kp && kp.confidence > 0.1) circle(kp.x, kp.y, 8);
-  }
-}
-
 function drawEquipment(pose) {
-  let nose = getPoint(pose, 'nose');
-  let lEar = getPoint(pose, 'left_ear');
-  let rEar = getPoint(pose, 'right_ear');
+  push();
+  imageMode(CENTER);
+
+  let nose      = getPoint(pose, 'nose');
+  let lEar      = getPoint(pose, 'left_ear');
+  let rEar      = getPoint(pose, 'right_ear');
   let lShoulder = getPoint(pose, 'left_shoulder');
   let rShoulder = getPoint(pose, 'right_shoulder');
-  let lElbow = getPoint(pose, 'left_elbow');
-  let rElbow = getPoint(pose, 'right_elbow');
-  let lWrist = getPoint(pose, 'left_wrist');
-  let rWrist = getPoint(pose, 'right_wrist');
+  let lElbow    = getPoint(pose, 'left_elbow');
+  let rElbow    = getPoint(pose, 'right_elbow');
+  let lWrist    = getPoint(pose, 'left_wrist');
+  let rWrist    = getPoint(pose, 'right_wrist');
 
+  // 몸통
   if (itemCount >= 1 && lShoulder && rShoulder) {
-    let centerX = (lShoulder.x + rShoulder.x) / 2;
-    let centerY = (lShoulder.y + rShoulder.y) / 2 + 100; 
-    let bodyWidth = dist(lShoulder.x, lShoulder.y, rShoulder.x, rShoulder.y) * 1.5;
-    let bodyHeight = bodyWidth; 
-    let angle = atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
-    push();
-    translate(centerX, centerY); 
-    rotate(angle);
-    image(imgBody, 0, 0, bodyWidth, bodyHeight);
-    pop();
+    let shoulderW = dist(lShoulder.x, lShoulder.y, rShoulder.x, rShoulder.y);
+    let cx = (lShoulder.x + rShoulder.x) / 2;
+    let cy = (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.7;
+    let w  = shoulderW * 1.8;
+    let a  = atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
+    push(); translate(cx, cy); rotate(a);
+    image(imgBody, 0, 0, w, w); pop();
   }
 
+  // 견갑
   if (itemCount >= 2 && lShoulder && rShoulder) {
-    let centerX = (lShoulder.x + rShoulder.x) / 2;
-    let centerY = (lShoulder.y + rShoulder.y) / 2;
-    let shoulderWidth = dist(lShoulder.x, lShoulder.y, rShoulder.x, rShoulder.y) * 1.5;
-    let angle = atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
-    push();
-    translate(centerX, centerY - 10); 
-    rotate(angle);
-    image(imgShoulder, 0, 0, shoulderWidth, shoulderWidth * 0.6);
-    pop();
+    let shoulderW = dist(lShoulder.x, lShoulder.y, rShoulder.x, rShoulder.y);
+    let cx = (lShoulder.x + rShoulder.x) / 2;
+    let cy = (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.1;
+    let w  = shoulderW * 1.65;
+    let a  = atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
+    push(); translate(cx, cy); rotate(a);
+    image(imgShoulder, 0, 0, w, w * 0.6); pop();
   }
 
+  // 헬멧
   if (itemCount >= 5 && nose && lEar && rEar) {
-    let headSize = dist(lEar.x, lEar.y, rEar.x, rEar.y) * 2.5; 
-    let angle = atan2(rEar.y - lEar.y, rEar.x - lEar.x);       
-    push();
-    translate(nose.x, nose.y - 50); 
-    rotate(angle);
-    image(imgHelmet, 0, 0, headSize, headSize * 1.2);
-    pop();
+    let headW = dist(lEar.x, lEar.y, rEar.x, rEar.y);
+    let hs = headW * 2.0;
+    let a  = atan2(rEar.y - lEar.y, rEar.x - lEar.x);
+    push(); translate(nose.x, nose.y - headW * 0.6); rotate(a);
+    image(imgHelmet, 0, 0, hs, hs * 1.2); pop();
   }
 
-  if (itemCount >= 3 && lWrist && lElbow) {
-    let angle = atan2(lWrist.y - lElbow.y, lWrist.x - lElbow.x);
-    let gloveH = dist(lElbow.x, lElbow.y, lWrist.x, lWrist.y) * 1.3;
-    let gloveW = gloveH * 0.7; 
-    push();
-    translate(lWrist.x, lWrist.y);
-    rotate(angle - PI/2); 
-    scale(-1, 1); 
-    image(imgGlove, 0, gloveH * 0.3, gloveW, gloveH);
-    pop();
-  }
-
+  // 검
   if (itemCount >= 6 && rElbow && rWrist) {
-    let angle = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
-    let swordW = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y) * 3.5;
-    let swordH = swordW * 0.2; 
-    push(); 
-    translate(rWrist.x, rWrist.y);
-    rotate(angle);
-    image(imgSword, swordW * 0.35, 0, swordW, swordH); 
-    pop(); 
+    let armLen = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y);
+    let a  = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
+    let sw = armLen * 3.0;
+    push(); translate(rWrist.x, rWrist.y); rotate(a);
+    image(imgSword, sw * 0.35, 0, sw, sw * 0.2); pop();
   }
 
+  // 왼 장갑
+  if (itemCount >= 3 && lWrist && lElbow) {
+    let armLen = dist(lElbow.x, lElbow.y, lWrist.x, lWrist.y);
+    let a = atan2(lWrist.y - lElbow.y, lWrist.x - lElbow.x);
+    let h = armLen * 1.6;
+    push(); translate(lWrist.x, lWrist.y); rotate(a - PI / 2); scale(-1, 1);
+    image(imgGlove, 0, 0, h * 0.7, h * 0.9); pop();
+  }
+
+  // 오른 장갑
   if (itemCount >= 4 && rWrist && rElbow) {
-    let angle = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
-    let gloveH = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y) * 1.3;
-    let gloveW = gloveH * 0.7;
-    push();
-    translate(rWrist.x, rWrist.y);
-    rotate(angle - PI/2); 
-    image(imgGlove, 0, gloveH * 0.3, gloveW, gloveH);
-    pop();
-  }
-}
+    let armLen = dist(rElbow.x, rElbow.y, rWrist.x, rWrist.y);
+    let a = atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
+    let h = armLen * 1.6;
+    push(); translate(rWrist.x, rWrist.y); rotate(a - PI / 2);
+    image(imgGlove, 0, 0, h * 0.7, h * 0.9); pop();
+  }  
 
-function drawStatusUI() {
-  fill(0, 180);
-  noStroke();
-  rect(10, 10, 260, 210, 10); 
-  
-  fill(255);
-  textSize(16);
-  text(`⚙️ 작동 모델: ${activeModelName}`, 20, 35); 
-  
-  textSize(14);
-  text(`📦 확인된 물건: ${foundItems.join(', ') || '없음'}`, 20, 60); 
-  text(`현재 장착 레벨: ${itemCount} / 6`, 20, 85);
-  
-  fill(itemCount >= 1 ? color(0, 255, 0) : 255);
-  text(`[1단계] 몸통 갑옷`, 20, 110);
-  fill(itemCount >= 2 ? color(0, 255, 0) : 255);
-  text(`[2단계] 양쪽 견갑`, 20, 130);
-  fill(itemCount >= 3 ? color(0, 255, 0) : 255);
-  text(`[3단계] 왼손 장갑`, 20, 150);
-  fill(itemCount >= 4 ? color(0, 255, 0) : 255);
-  text(`[4단계] 오른손 장갑`, 20, 170);
-  fill(itemCount >= 5 ? color(0, 255, 0) : 255);
-  text(`[5단계] 헬멧`, 20, 190);
-  fill(itemCount >= 6 ? color(255, 215, 0) : 255); 
-  text(`[6단계] 검 (전투 준비 완료!)`, 20, 210);
+  pop();
 }
 
 function keyPressed() {
   if (key >= '0' && key <= '6') itemCount = parseInt(key);
+}
+
+function mapPoseToFrame(pose) {
+  let fx = FRAME_PAD, fy = FRAME_PAD;
+  let fw = width  - FRAME_PAD * 2;
+  let fh = height - FRAME_PAD * 2;
+
+  // ml5는 video 엘리먼트의 실제 캡처 해상도(videoWidth/videoHeight) 기준으로 좌표를 줌
+  let srcW = video.elt.videoWidth  || width;
+  let srcH = video.elt.videoHeight || height;
+
+  let scaleX = fw / srcW;
+  let scaleY = fh / srcH;
+
+  let mapped = { keypoints: [] };
+  for (let kp of pose.keypoints) {
+    mapped.keypoints.push({
+      name:       kp.name,
+      confidence: kp.confidence,
+      x: fx + kp.x * scaleX,
+      y: fy + kp.y * scaleY,
+    });
+  }
+  return mapped;
 }

@@ -1,22 +1,26 @@
-<!--
-  👋 Hello! This is an ml5.js example made and shared with ❤️.
-  Learn more about the ml5.js project: https://ml5js.org/
-  ml5.js license and Code of Conduct: https://github.com/ml5js/ml5-next-gen/blob/main/LICENSE.md
-
-  This example demonstrates detecting objects in a live video through ml5.imageClassifier + Teachable Machine.
--->
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ml5.js imageClassifier + Teachable Machine Example</title>
+    <title>전투 준비</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.10/p5.min.js"></script>
     <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- p5 캔버스가 여기 자동 삽입됨 -->
+    <div id="canvas-wrap"></div>
+
+    <!-- 요일 선택 바 (화면 위에 고정) -->
+    <div class="day-bar" id="day-bar">
+      <button class="day-btn" data-day="Mon">월</button>
+      <button class="day-btn" data-day="Tue">화</button>
+      <button class="day-btn" data-day="Wed">수</button>
+      <button class="day-btn" data-day="Thu">목</button>
+      <button class="day-btn" data-day="Fri">금</button>
+    </div>
+
     <script src="sketch.js"></script>
   </body>
 </html>
