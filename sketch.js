@@ -18,7 +18,7 @@ let isAppReady = false;
 let commonItems = ["Wallet", "Phone"];
 
 const dailyItemsMap = {
-  Mon: ["SketchBook", "PencilCase", "Gloves", "Fan"], // v
+  Mon: ["SketchBook", "PencilCase", "pencilSharpener", "Fan"], // v
   Tue: ["TextBook", "IPad", "Perfume", "Bottle"],     // v
   Wed: ["Future", "Creative", "English", "Japanese"], // v
   Thu: ["Fan", "Reading", "Listening", "Pillcase"],   // v
