@@ -61,12 +61,10 @@ function preload() {
 }
 
 function setup() {
-  // 뷰포트 전체를 세로 거울로 사용
   let cnv = createCanvas(windowWidth, windowHeight);
   cnv.parent('canvas-wrap');
 
   video = createCapture(VIDEO, { flipped: true });
-  // video.size(windowWidth, windowHeight);
   video.hide();
 
   bodyPose.detectStart(video, gotPoses);
@@ -82,7 +80,6 @@ function setup() {
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  //video.size(windowWidth, windowHeight);
 }
 
 function draw() {
@@ -130,7 +127,6 @@ function draw() {
 
   // ── HUD 레이어 ──
   drawTopBar();        // 상단: 요일/모델 상태
-  drawGearStrip();     // 우측: 장비 슬롯 스트립
   drawScanFeedback();  // 하단: 인식 피드백 + 게이지
   drawAcquirePopup();  // 중앙: 아이템 획득 팝업
 }
@@ -222,56 +218,6 @@ function drawTopBar() {
 }
 
 // ────────────────────────────────────────────────
-// 우측 장비 슬롯 스트립 — 세로 화면에 맞게
-// ────────────────────────────────────────────────
-function drawGearStrip() {
-  let fx = FRAME_PAD, fy = FRAME_PAD, fw = width - FRAME_PAD * 2, fh = height - FRAME_PAD * 2;
-  let slotSize = 56;
-  let padding  = 10;
-  let totalH   = GEAR_ICONS.length * (slotSize + padding) - padding;
-  let startX   = fx + fw - slotSize - 16;
-  let startY   = fy + (fh - totalH) / 2;
-
-  for (let i = 0; i < GEAR_ICONS.length; i++) {
-    let x = startX;
-    let y = startY + i * (slotSize + padding);
-    let acquired = itemCount > i;
-
-    // 슬롯 배경
-    noStroke();
-    if (acquired) {
-      // 획득 — 골드 + 미세한 테두리
-      fill(255, 210, 60, 230);
-      rect(x, y, slotSize, slotSize, 10);
-      stroke(255, 230, 100, 180);
-      strokeWeight(1.5);
-      noFill();
-      rect(x, y, slotSize, slotSize, 10);
-      noStroke();
-    } else {
-      fill(0, 0, 0, 100);
-      rect(x, y, slotSize, slotSize, 10);
-      stroke(255, 255, 255, 25);
-      strokeWeight(1);
-      noFill();
-      rect(x, y, slotSize, slotSize, 10);
-      noStroke();
-    }
-
-    // 아이콘
-    textAlign(CENTER, CENTER);
-    textSize(24);
-    fill(acquired ? color(30, 30, 30) : color(255, 255, 255, 55));
-    text(GEAR_ICONS[i], x + slotSize / 2, y + slotSize / 2 - 6);
-
-    // 라벨
-    textSize(9);
-    fill(acquired ? color(40, 40, 40) : color(255, 255, 255, 45));
-    text(GEAR_LABELS[i], x + slotSize / 2, y + slotSize / 2 + 15);
-  }
-}
-
-// ────────────────────────────────────────────────
 // 하단 인식 피드백 패널
 // ────────────────────────────────────────────────
 function drawScanFeedback() {
@@ -295,7 +241,7 @@ function drawScanFeedback() {
   let panelW  = min(width - FRAME_PAD * 2 - 24, 560);
   let panelH  = chipH + 48;
   let px      = FRAME_PAD + (width - FRAME_PAD * 2 - panelW) / 2;
-  let py      = height - FRAME_PAD - panelH - 84; // 하단 요일 바(72px) 위에 위치
+  let py      = height - FRAME_PAD - panelH - 12;
 
   noStroke();
   fill(0, 0, 0, 160);
