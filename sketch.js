@@ -6,6 +6,7 @@ let smoothedKeypoints = {};
 let commonClassifier;
 let dailyClassifier;
 
+// ⭐️ 쓰레기 변수(activeModelName) 삭제 완료
 let currentLabel = "";
 
 let imgBody, imgShoulder, imgGlove, imgHelmet, imgSword;
@@ -27,7 +28,7 @@ const dailyItemsMap = {
 // ── 요일 전환 제어 변수 ──────────────────────────
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const LABELS = ['월요일', '화요일', '수요일', '목요일', '금요일'];
-let currentDayIndex = 0; // 0: Mon ~ 4: Fri
+let currentDayIndex = 0; 
 let dailyItems = [];
 let selectedDay = "";
 
@@ -45,17 +46,16 @@ let flashAlpha = 0;
 let flashItemName = "";
 let flashTextAlpha = 0;
 
-// ── 프레임 레이아웃 상수 ─────────────────────────
 const FRAME_PAD = 20;
 const FRAME_R   = 24;
 
 const ARMOR_ENTRY_SIDES = [
   "bottom",  // 0: 몸통
   "top",     // 1: 견갑
-  "left",    // 2: 왼장갑 (왼쪽)
-  "right",   // 3: 오른장갑 (오른쪽)
-  "top",     // 4: 투구/헬멧 (위에서)
-  "right",   // 5: 검 (오른쪽에서)
+  "left",    // 2: 왼장갑
+  "right",   // 3: 오른장갑
+  "top",     // 4: 헬멧
+  "right",   // 5: 검
 ];
 
 let armorAnimators = [null, null, null, null, null, null];
@@ -92,7 +92,6 @@ class ImpactParticle {
   isDead() { return this.life <= 0; }
 }
 
-// ── 충격파  링 클래스 ─────────────────────────
 class ImpactRing {
   constructor(x, y) {
     this.x = x;
@@ -292,7 +291,6 @@ function setLineDash(list) {
   drawingContext.setLineDash(list);
 }
 
-// ── 이미지 & 모델 사전 로드 ─────────────────────────────
 function preload() {
   bodyPose = ml5.bodyPose({ flipped: true });
   commonClassifier = ml5.imageClassifier('http://127.0.0.1:5500/Models/Common/model.json');
@@ -314,7 +312,6 @@ function setup() {
   bodyPose.detectStart(video, gotPoses);
   imageMode(CENTER);
 
-  // 오늘 요일 자동 인식 로직 실행
   initAutoDay();
 
   setTimeout(() => {
@@ -330,10 +327,8 @@ function windowResized() {
 function draw() {
   background(18, 18, 22);
 
-  let fx = FRAME_PAD;
-  let fy = FRAME_PAD;
-  let fw = width  - FRAME_PAD * 2;
-  let fh = height - FRAME_PAD * 2;
+  let fx = FRAME_PAD, fy = FRAME_PAD;
+  let fw = width  - FRAME_PAD * 2, fh = height - FRAME_PAD * 2;
 
   push();
   drawingContext.save();
@@ -381,7 +376,6 @@ function updateAndDrawEffects() {
   }
 }
 
-// ── 신체 관절 타겟팅 로직 ─────────────────────────────
 function getBodyTarget(pose) {
   let lShoulder = getPoint(pose, 'left_shoulder');
   let rShoulder = getPoint(pose, 'right_shoulder');
@@ -507,44 +501,37 @@ function drawOuterFrame(fx, fy, fw, fh) {
   noStroke();
 }
 
-// ── 🛠️ 1. 상단 바 인터페이스 (스마트 거울 스타일 날짜/시간 반영) ─────────────────────────────
+// ── 스마트 거울 상단 바 ─────────────────────────────
 function drawTopBar() {
   let fx = FRAME_PAD, fy = FRAME_PAD, fw = width - FRAME_PAD * 2;
   
-  // 두 줄 정보 출력을 위해 상단 그라데이션 영역을 44에서 56으로 늘려 가독성을 극대화합니다.
   for (let i = 0; i < 56; i++) {
     let a = map(i, 0, 56, 120, 0);
     noStroke(); fill(0, 0, 0, a);
     rect(fx, fy + i, fw, 1);
   }
   
-  let barY = fy + 26; // 수직 중앙 정렬선 조절
+  let barY = fy + 26;
 
-  // 🕒 p5.js 내장 함수 기반의 실시간 날짜 및 시간 포맷팅
   let dateStr = `${year()}. ${nf(month(), 2)}. ${nf(day(), 2)}.`;
   let timeStr = `${nf(hour(), 2)}:${nf(minute(), 2)}:${nf(second(), 2)}`;
 
   push();
   textAlign(LEFT, TOP);
-  
-  // 첫 번째 줄: 날짜 표시 (은은하고 얇은 서브 텍스트 연출)
   textSize(11);
   fill(255, 255, 255, 130);
   text(dateStr, fx + 18, fy + 12);
   
-  // 두 번째 줄: 시간 표시 (크고 선명한 메인 텍스트 연출)
   textSize(15);
   fill(255, 255, 255, 220);
   text(timeStr, fx + 18, fy + 27);
   pop();
 
-  // 중앙 영역: 레벨 카운트 정보
   fill(255);
   textAlign(CENTER, CENTER);
   textSize(15);
   text(`${itemCount} / 6`, fx + fw / 2, barY);
   
-  // 우측 영역: 활성화된 수요일/목요일 등 한국어 요일 노출
   if (selectedDay !== "") {
     fill(255, 210, 60);
     textAlign(RIGHT, CENTER);
@@ -553,13 +540,15 @@ function drawTopBar() {
   }
 }
 
+// ── 하단 스캔 피드백 (0~3: 요일, 4~5: 공통) ──────────────
 function drawScanFeedback() {
   if (itemCount >= 6) return;
 
   let cleanLabel = currentLabel.replace(/\s+/g, '').toLowerCase();
   let isNone = cleanLabel.includes('none') || cleanLabel === '' || !isAppReady;
 
-  let validTargets = itemCount < 2 ? commonItems : dailyItems;
+  // ⭐️ 여기서 itemCount < 4 이면 요일 아이템 리스트 표시
+  let validTargets = itemCount < 4 ? dailyItems : commonItems;
   let remaining = validTargets.filter(item => !foundItems.includes(item));
 
   let matchingItem = remaining.find(t =>
@@ -646,17 +635,21 @@ function gotPoses(results) {
   poses = results;
 }
 
+// ── ⭐️ AI 모델 분류 로직 (0~3: 요일, 4~5: 공통) ──────────
 function classifyVideo() {
   if (isClassifying) return;
-  if (itemCount < 2) {
+  
+  if (itemCount < 4) {
+    if (isDailyLoaded) {
+      isClassifying = true;
+      dailyClassifier.classify(video, gotResult);
+    } else {
+      currentLabel = "";
+      setTimeout(classifyVideo, 500);
+    }
+  } else if (itemCount < 6) {
     isClassifying = true;
     commonClassifier.classify(video, gotResult);
-  } else if (itemCount >= 2 && isDailyLoaded) {
-    isClassifying = true;
-    dailyClassifier.classify(video, gotResult);
-  } else if (itemCount >= 2 && !isDailyLoaded) {
-    currentLabel = "요일 모델 대기 중";
-    setTimeout(classifyVideo, 500);
   }
 }
 
@@ -664,7 +657,7 @@ function gotResult(results) {
   isClassifying = false;
   currentLabel = results[0].label;
   currentConfidence = results[0].confidence;
-  classifyVideo();
+  classifyVideo(); // 무한 루프
 }
 
 function checkLevelUp() {
@@ -674,16 +667,13 @@ function checkLevelUp() {
     return;
   }
 
-  let validTargets;
-  if (itemCount < 2) {
-    validTargets = commonItems;
-  } else {
-    if (dailyItems.length === 0) {
-      holdTime = 0;
-      activeTargetInView = "";
-      return;
-    }
-    validTargets = dailyItems;
+  // ⭐️ 0~3개까지는 요일 물건, 4~5개일 때는 공통 물건을 타겟으로 잡음
+  let validTargets = itemCount < 4 ? dailyItems : commonItems;
+
+  if (itemCount < 4 && dailyItems.length === 0) {
+    holdTime = 0;
+    activeTargetInView = "";
+    return;
   }
 
   let isTargetMatch = false;
@@ -743,24 +733,15 @@ function checkLevelUp() {
 
     holdTime = 0;
     activeTargetInView = "";
-
-    if (itemCount === 2 && isDailyLoaded && !isClassifying) {
-      classifyVideo();
-    }
   }
 }
 
-// ── 🛠️ 2. 오늘 요일 자동 인식 및 주말 예외 처리 ─────────────────────────────
+// ── 요일 자동 선택 및 방향키 ─────────────────────────────
 function initAutoDay() {
-  let today = new Date().getDay(); // 0(일) ~ 6(토)
-  
-  if (today === 0) {
-    currentDayIndex = 0; // 일요일이면 월요일로 수렴
-  } else if (today === 6) {
-    currentDayIndex = 4; // 토요일이면 금요일로 수렴
-  } else {
-    currentDayIndex = today - 1; // 평일(월~금: 1~5)을 인덱스(0~4)로 맵핑
-  }
+  let today = new Date().getDay(); 
+  if (today === 0) currentDayIndex = 0; 
+  else if (today === 6) currentDayIndex = 4;
+  else currentDayIndex = today - 1; 
   
   loadDayModel(currentDayIndex);
 }
@@ -770,25 +751,20 @@ function loadDayModel(index) {
   dailyItems = dailyItemsMap[selectedDay];
   isDailyLoaded = false;
   isClassifying = false;
-  currentLabel = `${LABELS[index]} 로딩 중…`;
+  currentLabel = ""; 
 
   dailyClassifier = ml5.imageClassifier(
     `http://127.0.0.1:5500/Models/${selectedDay}/model.json`,
     () => {
       isDailyLoaded = true;
-      currentLabel = `${LABELS[index]} 준비 완료`;
-      if (itemCount >= 2 && !isClassifying) classifyVideo();
+      if (itemCount < 4 && !isClassifying) classifyVideo();
     }
   );
 }
 
-// ── 🛠️ 3. 좌/우 방향키를 통한 인터랙티브 요일 스위칭 ─────────────────────────────
 function keyPressed() {
-  // if (key >= '0' && key <= '6') itemCount = parseInt(key);
+  if (key >= '0' && key <= '6') itemCount = parseInt(key);
 
-  if(foundItems.length > 3)
-    return;
-  
   if (keyCode === LEFT_ARROW) {
     if (currentDayIndex > 0) {
       currentDayIndex--;
