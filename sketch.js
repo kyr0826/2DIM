@@ -763,7 +763,10 @@ function loadDayModel(index) {
 }
 
 function keyPressed() {
-  if (key >= '0' && key <= '6') itemCount = parseInt(key);
+  // if (key >= '0' && key <= '6') itemCount = parseInt(key);
+
+  if(foundItems.length > 0)
+    return;
 
   if (keyCode === LEFT_ARROW) {
     if (currentDayIndex > 0) {
