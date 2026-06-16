@@ -332,18 +332,15 @@ function windowResized() {
 }
 
 function draw() {
-  randomSeed(seed);
+  randomSeed(seed);  
+
+  
+
+  updateAndDrawEffects();
 
   drawScene();
   drawAmbientRoom();
   drawMirror();
-
-  if (poses.length > 0) {
-    let pose = poses[0];
-    drawEquipment(mapPoseToFrame(pose));
-  }
-
-  updateAndDrawEffects();
 
   checkLevelUp();
   drawTopBar();
@@ -1542,6 +1539,11 @@ function drawMirror() {
 
   imageMode(CORNER);
   image(video, mX, mY, mW, mH);
+
+if (poses.length > 0) {
+    let pose = poses[0];
+    drawEquipment(mapPoseToFrame(pose));
+  }
 
   drawingContext.restore();
 
