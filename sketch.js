@@ -41,6 +41,8 @@ const REQUIRED_TIME = 1000;
 
 let isClassifying = false;
 
+const successSound = new Audio('Sounds/success.mp3');
+
 // ── UI 연출용 변수 ──────────────────────────────
 let flashAlpha = 0;
 let flashItemName = "";
@@ -700,6 +702,8 @@ function checkLevelUp() {
       setTimeout(() => {
         itemCount++;
         armorAnimators[slotIdx] = new ArmorAnimator(slotIdx, getters[slotIdx]);
+        successSound.currentTime = 0;
+        successSound.play();
       }, 1500);
     }
 
