@@ -528,20 +528,28 @@ function drawScanFeedback() {
   );
   let isMatch = !!matchingItem && currentConfidence >= 0.8;
 
-  let chipH   = 28;
-  let panelW  = min(width - FRAME_PAD * 2 - 24, 560);
+  let mX = W * 0.2568;
+  let mW = W * 0.467;
+
+  let panelW  = min(mW * 0.85, 560); 
+  
+  // ⭐️ 텍스트 사이즈와 내부 버튼 높이/여백도 패널 너비에 비례하게 동적 계산!
+  let chipH   = max(panelW * 0.05, 20); // 버튼 높이
+  let tSizeLg = max(panelW * 0.022, 9); // 요일/아이템 이름 텍스트 크기
+  let tSizeSm = max(panelW * 0.018, 8); // 하단 퍼센트/안내 문구 텍스트 크기
+  let chipPad = max(panelW * 0.018, 4); // 버튼 사이 여백
+
   let panelH  = chipH + 48;
-  let px      = FRAME_PAD + (width - FRAME_PAD * 2 - panelW) / 2;
-  let py      = height - FRAME_PAD - panelH;
+  let px      = mX + (mW - panelW) / 2;
+  let py      = H * 0.95 - panelH;
 
   noStroke();
   fill(0, 0, 0, 160);
   rect(px, py, panelW, panelH, 10);
 
-  let chipPad  = 10;
   let chipR    = 6;
   let chipW    = (panelW - chipPad * (remaining.length + 1)) / max(remaining.length, 1);
-  chipW        = constrain(chipW, 50, 120);
+  chipW        = constrain(chipW, 40, 120);
   let totalChipW = remaining.length * chipW + (remaining.length - 1) * chipPad;
   let chipStartX = px + (panelW - totalChipW) / 2;
 
@@ -559,7 +567,9 @@ function drawScanFeedback() {
       fill(255, 255, 255, 30);
     }
     rect(cx, cy, chipW, chipH, chipR);
-    textSize(12);
+    
+    // ⭐️ 아이템 텍스트 사이즈 적용
+    textSize(tSizeLg);
     fill(isActive ? color(20, 20, 20) : color(220, 220, 220));
     text(remaining[i], cx + chipW / 2, cy + chipH / 2);
   }
@@ -576,7 +586,8 @@ function drawScanFeedback() {
   rect(barX, barY, barW * progress, 8, 4);
 
   textAlign(CENTER, TOP);
-  textSize(11);
+  // ⭐️ 하단 안내 문구 텍스트 사이즈 적용
+  textSize(tSizeSm);
   if (isNone) {
     fill(140, 140, 140);
     text("카메라에 준비물을 보여주세요", px + panelW / 2, barY + 12);
@@ -1112,32 +1123,43 @@ function drawScene() {
   rect(nsX + 7 * sc, nsY + nsH * 0.5 - 1.5 * sc, nsW - 14 * sc, 3 * sc);
   drawBooksRight(nsX + 10 * sc, nsY + 9 * sc, nsW - 20 * sc, nsH - 18 * sc, sc);
 
-// ── ⭐️ 1. 식물 데스크 위로 렌더링 좌표 이동 ──
-  push();
-  let nsY_desk = H * 0.758; 
-  let floorY = H * 0.985;
-  let liftOffset = floorY - nsY_desk;
+// ── RIGHT PLANT (on nightstand) ──────────────────────────
   
-  // 바닥에 있던 화분을 데스크 높이만큼 끌어올리고 눈에 띄게 왼쪽으로 아주 살짝 이동합니다.
-  translate(W * -0.05, -liftOffset); 
-  
-  let rplX = W * 0.968, rplY = H * 0.89;
-  drawingContext.fillStyle = 'rgba(0,0,0,0.28)';
-  ellipse(rplX, rplY + 68 * sc, 64 * sc, 14 * sc);
+  // 🎛️ [화분 완전 자동 컨트롤 패널] 이 5개 변수만 원하는 느낌으로 바꾸시면 됩니다!
+  let plantX_ratio = 0.7;   // 1. 좌우 위치 (0.0: 책상 왼쪽 끝 ~ 1.0: 오른쪽 끝)
+  let plantY_offset = 10;    // 2. 상하 위치 (0: 책상 표면 딱 맞춤, -30: 위로 이동, +30: 아래로 이동)
+  let potH = 68;            // 3. 화분의 높이 (위아래 길이)
+  let potW = 60;            // 4. 화분의 너비 (좌우 두께)
+  let shadowY_offset = -3;  // 5. 그림자 위치 미세 조정 (화분 바닥 기준)
 
-  let rPotGrad = drawingContext.createLinearGradient(rplX - 32 * sc, rplY, rplX + 32 * sc, rplY);
+  // ⬇️ 아래 로직은 변수들에 맞춰 상하/좌우/그림자까지 자동 계산하는 영역입니다.
+  let rplX = nsX + nsW * plantX_ratio; 
+  let rplY = nsY - potH * sc + plantY_offset * sc; 
+
+  // 1. 그림자 (화분의 진짜 바닥인 rplY + potH * sc를 기준으로 잡아서 화분과 함께 상하로 움직입니다)
+  drawingContext.fillStyle = 'rgba(0,0,0,0.28)';
+  ellipse(rplX, rplY + potH * sc + shadowY_offset * sc, (potW + 4) * sc, 14 * sc);
+
+  // 2. 화분 본체 그라데이션
+  let rPotGrad = drawingContext.createLinearGradient(rplX - (potW/2) * sc, rplY, rplX + (potW/2) * sc, rplY);
   rPotGrad.addColorStop(0,   'rgb(50,40,30)');
   rPotGrad.addColorStop(0.4, 'rgb(35,28,20)');
   rPotGrad.addColorStop(1,   'rgb(22,17,12)');
   drawingContext.fillStyle = rPotGrad;
-  rect(rplX - 30 * sc, rplY, 60 * sc, 68 * sc, 4 * sc);
+  
+  // 3. 화분 몸통 렌더링
+  rect(rplX - (potW/2) * sc, rplY, potW * sc, potH * sc, 4 * sc);
+  
+  // 4. 화분 입구 테두리
   fill(60, 48, 34); noStroke();
-  ellipse(rplX, rplY, 66 * sc, 18 * sc);
+  ellipse(rplX, rplY, (potW + 6) * sc, 18 * sc);
   fill(38, 30, 20);
-  ellipse(rplX, rplY, 55 * sc, 14 * sc);
+  ellipse(rplX, rplY, (potW - 5) * sc, 14 * sc);
+  
+  // 5. 식물 잎사귀 (화물 상하 위치인 rplY 기준 자동 추적)
   for (let i = 0; i < 26; i++) {
     let ang2 = random(-1.4, 1.4);
-    let lx2 = rplX + cos(ang2) * random(0, 28) * sc;
+    let lx2 = rplX + cos(ang2) * random(0, potW * 0.46) * sc;
     let ly2 = rplY + random(-100, -8) * sc;
     let green = random(62, 118);
     fill(random(14, 38), green, random(28, 52), random(155, 225));
@@ -1150,7 +1172,6 @@ function drawScene() {
     noStroke();
     pop();
   }
-  pop();
 
   // ── TABLE LAMP ────────────────────────────────────────────
   let lampX = W * 0.832, lampY = nsY - 66 * sc;
