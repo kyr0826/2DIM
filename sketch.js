@@ -334,8 +334,6 @@ function windowResized() {
 function draw() {
   randomSeed(seed);  
 
-  
-
   updateAndDrawEffects();
 
   drawScene();
@@ -368,7 +366,7 @@ function getBodyTarget(pose) {
   let shoulderW = dist(lShoulder.x, lShoulder.y, rShoulder.x, rShoulder.y);
   return {
     x: (lShoulder.x + rShoulder.x) / 2,
-    y: (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.7,
+    y: (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.58,
     w: shoulderW * 1.8,
     h: shoulderW * 1.8,
     angle: atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x),
@@ -383,8 +381,8 @@ function getShoulderTarget(pose) {
   return {
     x: (lShoulder.x + rShoulder.x) / 2,
     y: (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.1,
-    w: shoulderW * 1.65,
-    h: shoulderW * 1.65 * 0.6,
+    w: shoulderW * 2.065,
+    h: shoulderW * 2.065 * 0.6,
     angle: atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x),
   };
 }
@@ -425,10 +423,10 @@ function getHelmetTarget(pose) {
   let rEar  = getPoint(pose, 'right_ear');
   if (!nose || !lEar || !rEar) return null;
   let headW = dist(lEar.x, lEar.y, rEar.x, rEar.y);
-  let hs    = headW * 2.0;
+  let hs    = headW * 2.8;
   return {
     x: nose.x,
-    y: nose.y - headW * 0.6,
+    y: nose.y - headW * 0.42,
     w: hs,
     h: hs * 1.2,
     angle: atan2(rEar.y - lEar.y, rEar.x - lEar.x),
@@ -451,45 +449,57 @@ function getSwordTarget(pose) {
   };
 }
 
-
-
-// ── 스마트 거울 상단 바 ─────────────────────────────
 function drawTopBar() {
-  let fx = FRAME_PAD, fy = FRAME_PAD, fw = width - FRAME_PAD * 2;
+  // 거울의 좌표를 동적으로 가져옵니다.
+  let mX = W * 0.2568;
+  let mY = H * 0.0735;
+  let mW = W * 0.467;
   
-  for (let i = 0; i < 56; i++) {
-    let a = map(i, 0, 56, 120, 0);
-    noStroke(); fill(0, 0, 0, a);
-    rect(fx, fy + i, fw, 1);
-  }
-  
-  let barY = fy + 26;
+  // 거울 안쪽 여백
+  let fx = mX + 60; 
+  let fy = mY + 30; 
 
   let dateStr = `${year()}. ${nf(month(), 2)}. ${nf(day(), 2)}.`;
   let timeStr = `${nf(hour(), 2)}:${nf(minute(), 2)}:${nf(second(), 2)}`;
 
   push();
-  textAlign(LEFT, TOP);
-  textSize(11);
-  fill(255, 255, 255, 130);
-  text(dateStr, fx + 18, fy + 12);
-  
-  textSize(15);
-  fill(255, 255, 255, 220);
-  text(timeStr, fx + 18, fy + 27);
-  pop();
+  // ⭐️ 텍스트 가독성 마법: Canvas API 상태를 저장하고 진한 그림자를 생성합니다.
+  drawingContext.save();
+  drawingContext.shadowOffsetX = 1;
+  drawingContext.shadowOffsetY = 2;
+  drawingContext.shadowBlur = 10;
+  drawingContext.shadowColor = 'rgba(0, 0, 0, 0.9)'; // 진한 검은색 그림자
 
-  fill(255);
-  textAlign(CENTER, CENTER);
-  textSize(15);
-  text(`${itemCount} / 6`, fx + fw / 2, barY);
+  textAlign(LEFT, TOP);
   
+  // 1. 날짜 텍스트 (크기 살짝 키움)
+  textSize(14);
+  fill(255, 255, 255, 230); 
+  text(dateStr, fx, fy);
+  
+  // 2. 시간 텍스트 (크기, 굵기 강화)
+  textSize(22);
+  textStyle(BOLD);
+  fill(255, 255, 255, 255);
+  text(timeStr, fx, fy + 20);
+
+  // 3. 중앙 거울 진행도 표시
+  fill(255, 255, 255, 255);
+  textAlign(CENTER, TOP);
+  textSize(18);
+  text(`${itemCount} / 6`, mX + mW / 2, fy + 8);
+  
+  // 4. 우측 요일 표시
   if (selectedDay !== "") {
     fill(255, 210, 60);
-    textAlign(RIGHT, CENTER);
-    textSize(13);
-    text(LABELS[currentDayIndex], fx + fw - 18, barY);
+    textAlign(RIGHT, TOP);
+    textSize(18);
+    text(LABELS[currentDayIndex], mX + mW - 60, fy + 8);
   }
+
+  // ⭐️ 중요: 그림자 효과가 다른 요소에 번지지 않도록 복구합니다.
+  drawingContext.restore();
+  pop();
 }
 
 // ── 하단 스캔 피드백 (0~3: 요일, 4~5: 공통) ──────────────
@@ -499,7 +509,6 @@ function drawScanFeedback() {
   let cleanLabel = currentLabel.replace(/\s+/g, '').toLowerCase();
   let isNone = cleanLabel.includes('none') || cleanLabel === '' || !isAppReady;
 
-  // ⭐️ 여기서 itemCount < 4 이면 요일 아이템 리스트 표시
   let validTargets = itemCount < 4 ? dailyItems : commonItems;
   let remaining = validTargets.filter(item => !foundItems.includes(item));
 
@@ -512,7 +521,7 @@ function drawScanFeedback() {
   let panelW  = min(width - FRAME_PAD * 2 - 24, 560);
   let panelH  = chipH + 48;
   let px      = FRAME_PAD + (width - FRAME_PAD * 2 - panelW) / 2;
-  let py      = height - FRAME_PAD - panelH - 84;
+  let py      = height - FRAME_PAD - panelH;
 
   noStroke();
   fill(0, 0, 0, 160);
@@ -572,13 +581,30 @@ function drawScanFeedback() {
 function drawAcquirePopup() {
   if (flashTextAlpha <= 0) return;
   push();
+  
+  // ⭐️ 팝업 전용 강렬한 그림자 효과
+  drawingContext.save();
+  drawingContext.shadowOffsetX = 0;
+  drawingContext.shadowOffsetY = 4;
+  drawingContext.shadowBlur = 15;
+  drawingContext.shadowColor = 'rgba(0, 0, 0, 0.85)';
+
   textAlign(CENTER, CENTER);
-  textSize(32);
+  
+  // 메인 텍스트
+  textSize(36);
+  textStyle(BOLD);
   fill(255, 210, 60, flashTextAlpha);
   text(`✔ ${flashItemName} 장착!`, width / 2, height / 2);
-  textSize(16);
-  fill(255, 255, 255, flashTextAlpha * 0.7);
-  text(`${itemCount} / 6 장비 준비 완료`, width / 2, height / 2 + 42);
+  
+  // 서브 텍스트
+  textSize(18);
+  textStyle(NORMAL);
+  fill(255, 255, 255, flashTextAlpha * 0.9);
+  text(`${itemCount+1} / 6 장비 준비 완료`, width / 2, height / 2 + 46);
+  
+  drawingContext.restore();
+
   flashTextAlpha = max(0, flashTextAlpha - 3);
   pop();
 }
@@ -587,7 +613,6 @@ function gotPoses(results) {
   poses = results;
 }
 
-// ── ⭐️ AI 모델 분류 로직 (0~3: 요일, 4~5: 공통) ──────────
 function classifyVideo() {
   if (isClassifying) return;
   
@@ -609,7 +634,7 @@ function gotResult(results) {
   isClassifying = false;
   currentLabel = results[0].label;
   currentConfidence = results[0].confidence;
-  classifyVideo(); // 무한 루프
+  classifyVideo(); 
 }
 
 function checkLevelUp() {
@@ -619,7 +644,6 @@ function checkLevelUp() {
     return;
   }
 
-  // ⭐️ 0~3개까지는 요일 물건, 4~5개일 때는 공통 물건을 타겟으로 잡음
   let validTargets = itemCount < 4 ? dailyItems : commonItems;
 
   if (itemCount < 4 && dailyItems.length === 0) {
@@ -688,7 +712,6 @@ function checkLevelUp() {
   }
 }
 
-// ── 요일 자동 선택 및 방향키 ─────────────────────────────
 function initAutoDay() {
   let today = new Date().getDay(); 
   if (today === 0) currentDayIndex = 0; 
@@ -715,8 +738,6 @@ function loadDayModel(index) {
 }
 
 function keyPressed() {
-  // if (key >= '0' && key <= '6') itemCount = parseInt(key);
-
   if(foundItems.length > 0)
     return;
 
@@ -741,7 +762,6 @@ function getPoint(pose, partName) {
 }
 
 function drawEquipment(pose) {
-  
   push();
   imageMode(CENTER);
 
@@ -788,7 +808,7 @@ function drawStaticArmor(slotIdx, pose) {
     if (lShoulder && rShoulder) {
       let shoulderW = dist(lShoulder.x, lShoulder.y, rShoulder.x, rShoulder.y);
       let cx = (lShoulder.x + rShoulder.x) / 2;
-      let cy = (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.7;
+      let cy = (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.58;
       let w  = shoulderW * 1.8;
       let a  = atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
       push(); translate(cx, cy); rotate(a);
@@ -801,7 +821,7 @@ function drawStaticArmor(slotIdx, pose) {
       let shoulderW = dist(lShoulder.x, lShoulder.y, rShoulder.x, rShoulder.y);
       let cx = (lShoulder.x + rShoulder.x) / 2;
       let cy = (lShoulder.y + rShoulder.y) / 2 + shoulderW * 0.1;
-      let w  = shoulderW * 1.65;
+      let w  = shoulderW * 2.065;
       let a  = atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
       push(); translate(cx, cy); rotate(a);
       image(imgShoulder, 0, 0, w, w * 0.6); pop();
@@ -832,9 +852,9 @@ function drawStaticArmor(slotIdx, pose) {
     let rEar  = getPoint(pose, 'right_ear');
     if (nose && lEar && rEar) {
       let headW = dist(lEar.x, lEar.y, rEar.x, rEar.y);
-      let hs = headW * 2.0;
+      let hs = headW * 2.8;
       let a  = atan2(rEar.y - lEar.y, rEar.x - lEar.x);
-      push(); translate(nose.x, nose.y - headW * 0.6); rotate(a);
+      push(); translate(nose.x, nose.y - headW * 0.42); rotate(a);
       image(imgHelmet, 0, 0, hs, hs * 1.2); pop();
     }
   } else if (slotIdx === 5) {
@@ -890,21 +910,13 @@ function mapPoseToFrame(pose) {
   return mapped;
 }
 
-
-
-
 function drawScene() {
-  // sc is the universal scale factor — all px values were authored at W=1300
   let sc = W / 1300;
 
   // ── BACKGROUND WALL ────────────────────────────────────────
   background(172, 152, 128);
 
-  for (let y = 0; y < H; y += 3) {
-    let alpha = map(noise(0.001, y * 0.003), 0, 1, 0, 6);
-    drawingContext.fillStyle = `rgba(255,255,255,${alpha / 255})`;
-    drawingContext.fillRect(0, y, W, 2);
-  }
+  // ⭐️ 2. 부자연스러운 가로 요철 라인 렌더링 코드 제거됨 (벽지 배경이 깔끔해집니다!)
 
   // Ceiling ambient
   let ceilGrad = drawingContext.createRadialGradient(W * 0.5, 0, 0, W * 0.5, 0, H * 0.7);
@@ -948,31 +960,10 @@ function drawScene() {
   }
   drawingContext.restore();
 
-  // ── TOP-LEFT: TV ──────────────────────────────────────────
-  // In photo: TV sits in very top-left, roughly 0–18% width, 0–23% height
-  let tvX = W * 0.002, tvY = H * 0.005;
-  let tvW = W * 0.155, tvH = H * 0.240;
-  fill(14, 12, 11); noStroke();
-  rect(tvX, tvY, tvW, tvH, 5 * sc);
-  stroke(50, 46, 42); strokeWeight(0.8 * sc); noFill();
-  rect(tvX + 1 * sc, tvY + 1 * sc, tvW - 2 * sc, tvH - 2 * sc, 4 * sc);
-  noStroke();
-  fill(8, 9, 12);
-  rect(tvX + 7 * sc, tvY + 7 * sc, tvW - 14 * sc, tvH - 14 * sc, 2 * sc);
-  let tvSheen = drawingContext.createLinearGradient(tvX + 7 * sc, tvY + 7 * sc, tvX + tvW * 0.55, tvY + tvH * 0.45);
-  tvSheen.addColorStop(0,   'rgba(180,180,200,0.08)');
-  tvSheen.addColorStop(0.5, 'rgba(255,255,255,0.04)');
-  tvSheen.addColorStop(1,   'rgba(0,0,0,0)');
-  drawingContext.fillStyle = tvSheen;
-  rect(tvX + 7 * sc, tvY + 7 * sc, tvW - 14 * sc, tvH - 14 * sc, 2 * sc);
-  fill(40, 180, 100, 200);
-  ellipse(tvX + tvW - 12 * sc, tvY + tvH - 8 * sc, 4 * sc, 4 * sc);
-
   // ── LEFT WALL SHELF ───────────────────────────────────────
-  // Photo: shelf at roughly 38–43% height on left, full left panel width
   let shelfX = W * 0.002;
   let shelfY = H * 0.390;
-  let shelfW = W * 0.195;           // slightly wider than before
+  let shelfW = W * 0.195;           
   let shelfH = 14 * sc;
 
   // Rod
@@ -981,7 +972,6 @@ function drawScene() {
   rect(rodX, shelfY + shelfH, 7 * sc, H * 0.14, 3 * sc);
   fill(80, 70, 55);
   rect(rodX + 1 * sc, shelfY + shelfH, 2 * sc, H * 0.14, 3 * sc);
-
 
   // Shelf board
   let shelfGrad = drawingContext.createLinearGradient(shelfX, shelfY, shelfX, shelfY + shelfH);
@@ -1000,7 +990,6 @@ function drawScene() {
   noStroke();
 
   // ── SPEAKER (on shelf) ────────────────────────────────────
-  // Photo: speaker is right portion of shelf, darker cylinder shape
   let spkX = shelfX + shelfW * 0.52;
   let spkY = shelfY - 72 * sc;
   let spkW = 64 * sc, spkH = 69 * sc;
@@ -1062,87 +1051,67 @@ function drawScene() {
   }
 
   // ── HEADPHONES (wall below shelf) ────────────────────────
-  // Photo: headphones hang on wall, below shelf, fairly large
   let hpX = shelfX + shelfW * 0.06;
   let hpY = shelfY + shelfH + H * 0.045;
   drawHeadphones(hpX, hpY, 130 * sc);
 
-  // ── RIGHT WALL — STICKY NOTE ──────────────────────────────
-  // Photo: top-right, large sticky, right of mirror
-  let stX = W * 0.858, stY = H * 0.062;
-  let stW = 122 * sc, stH = 156 * sc;
-  drawingContext.fillStyle = 'rgba(0,0,0,0.20)';
-  rect(stX + 4 * sc, stY + 4 * sc, stW, stH, 2 * sc);
-  fill(210, 205, 178, 155); noStroke();
-  rect(stX + stW / 2 - 16 * sc, stY - 9 * sc, 32 * sc, 13 * sc, 2 * sc);
-  let noteGrad = drawingContext.createLinearGradient(stX, stY, stX + stW, stY + stH);
-  noteGrad.addColorStop(0,   'rgb(244,232,194)');
-  noteGrad.addColorStop(0.5, 'rgb(234,222,182)');
-  noteGrad.addColorStop(1,   'rgb(218,206,166)');
-  drawingContext.fillStyle = noteGrad;
-  rect(stX, stY, stW, stH, 2 * sc);
-  fill(200, 188, 152);
-  triangle(stX + stW - 18 * sc, stY + stH, stX + stW, stY + stH - 18 * sc, stX + stW, stY + stH);
-  fill(228, 216, 178);
-  triangle(stX + stW - 18 * sc, stY + stH, stX + stW, stY + stH - 18 * sc, stX + stW - 4 * sc, stY + stH - 4 * sc);
-  stroke(185, 172, 138, 140); strokeWeight(0.7 * sc);
-  for (let i = 0; i < 9; i++) {
-    let ly2 = stY + 24 * sc + i * 15 * sc;
-    if (ly2 < stY + stH - 10 * sc) line(stX + 8 * sc, ly2, stX + stW - 10 * sc, ly2);
-  }
-  noStroke();
-  textFont('Georgia'); textStyle(NORMAL);
-  let items = [
-    { done: true,  text: 'Study' },
-    { done: true,  text: 'Workout' },
-    { done: true, text: 'Read 30p' },
-    { done: true, text: 'Sleep 23:00' },
-  ];
-  for (let i = 0; i < items.length; i++) {
-    let iy = stY + 24 * sc + i * 30 * sc;
-    if (items[i].done) {
-      fill(50, 110, 55); textSize(13 * sc);
-      text('✓', stX + 9 * sc, iy);
-    } else {
-      fill(155, 130, 95, 180); textSize(10 * sc);
-      ellipse(stX + 14 * sc, iy - 4 * sc, 8 * sc, 8 * sc);
-    }
-    if (items[i].done) fill(140, 130, 105);
-    else fill(38, 34, 26);
-    textSize(14 * sc);
-    text(items[i].text, stX + 50 * sc, iy);
-  }
-  textStyle(NORMAL);
+  // ── DESK SURFACE ──────────────────────────────────────────
+  let deskY = H * 0.948;
+  let deskGrad = drawingContext.createLinearGradient(0, deskY, 0, H);
+  deskGrad.addColorStop(0,   'rgb(24,19,14)');
+  deskGrad.addColorStop(0.2, 'rgb(18,14,10)');
+  deskGrad.addColorStop(1,   'rgb(9,7,5)');
+  drawingContext.fillStyle = deskGrad;
+  rect(0, deskY, W, H - deskY);
+  let deskEdge = drawingContext.createLinearGradient(0, deskY, W, deskY);
+  deskEdge.addColorStop(0,    'rgba(255,195,90,0.22)');
+  deskEdge.addColorStop(0.35, 'rgba(255,185,80,0.12)');
+  deskEdge.addColorStop(0.6,  'rgba(255,195,90,0.18)');
+  deskEdge.addColorStop(1,    'rgba(255,175,70,0.08)');
+  drawingContext.fillStyle = deskEdge;
+  rect(0, deskY, W, 3 * sc);
+  let deskRefl = drawingContext.createLinearGradient(0, deskY, 0, deskY + H * 0.06);
+  deskRefl.addColorStop(0, 'rgba(255,185,75,0.09)');
+  deskRefl.addColorStop(1, 'rgba(0,0,0,0)');
+  drawingContext.fillStyle = deskRefl;
+  rect(0, deskY, W, H * 0.06);
 
-  // ── RIGHT WALL — MOTIVATIONAL CARD ───────────────────────
-  // Photo: black card below sticky note
-  let cardX = W * 0.845, cardY = H * 0.340;
-  let cardW = 138 * sc, cardH = 110 * sc;
-  drawingContext.fillStyle = 'rgba(0,0,0,0.28)';
-  rect(cardX + 5 * sc, cardY + 5 * sc, cardW, cardH, 3 * sc);
-  fill(150, 145, 128, 130); noStroke();
-  rect(cardX + cardW / 2 - 13 * sc, cardY - 8 * sc, 26 * sc, 11 * sc, 2 * sc);
-  let cardGrad = drawingContext.createLinearGradient(cardX, cardY, cardX + cardW, cardY + cardH);
-  cardGrad.addColorStop(0, 'rgb(24,22,19)');
-  cardGrad.addColorStop(1, 'rgb(16,14,11)');
-  drawingContext.fillStyle = cardGrad;
-  rect(cardX, cardY, cardW, cardH, 3 * sc);
-  stroke(52, 48, 40); strokeWeight(0.8 * sc); noFill();
-  rect(cardX, cardY, cardW, cardH, 3 * sc);
-  noStroke();
-  fill(238, 234, 228);
-  textFont('Georgia'); textStyle(ITALIC); textSize(26 * sc); textAlign(LEFT);
-  text('you',  cardX + 16 * sc, cardY + 46 * sc);
-  text('can.', cardX + 16 * sc, cardY + 76 * sc);
-  stroke(80, 74, 60); strokeWeight(0.6 * sc);
-  line(cardX + 14 * sc, cardY + 75 * sc, cardX + cardW - 14 * sc, cardY + 75* sc);
-  noStroke(); textStyle(NORMAL);
+  // ── BOTTOM-LEFT: BOOKS + MUG ──────────────────────────────
+  drawBooksLeft(W * 0.025, deskY, sc);
+  drawMug(W * 0.115, deskY - 52 * sc, sc);
 
-  // ── RIGHT FLOOR PLANT (partially cropped at right edge) ──
-  // Photo: plant pot is at very right edge, leaves cropped by frame
-  let rplX = W * 0.968, rplY = H * 0.50;
+  // ── BOTTOM-RIGHT: NIGHTSTAND ──────────────────────────────
+  let nsX = W * 0.760, nsY = H * 0.758;
+  let nsW = W * 0.248, nsH = H * 0.242;
+  drawingContext.fillStyle = 'rgba(0,0,0,0.45)';
+  rect(nsX + 6 * sc, nsY + 6 * sc, nsW, nsH, 4 * sc);
+  let nsGrad = drawingContext.createLinearGradient(nsX, nsY, nsX + nsW, nsY + nsH);
+  nsGrad.addColorStop(0, 'rgb(26,21,16)');
+  nsGrad.addColorStop(1, 'rgb(16,13,9)');
+  drawingContext.fillStyle = nsGrad;
+  rect(nsX, nsY, nsW, nsH, 4 * sc);
+  fill(30, 25, 18); noStroke();
+  rect(nsX + 7 * sc, nsY + 7 * sc, nsW - 14 * sc, nsH - 14 * sc, 2 * sc);
+  stroke(50, 42, 32); strokeWeight(0.7 * sc); noFill();
+  rect(nsX + 7 * sc, nsY + 7 * sc, nsW - 14 * sc, nsH - 14 * sc, 2 * sc);
+  noStroke();
+  fill(18, 14, 10);
+  rect(nsX + 7 * sc, nsY + nsH * 0.5 - 1.5 * sc, nsW - 14 * sc, 3 * sc);
+  drawBooksRight(nsX + 10 * sc, nsY + 9 * sc, nsW - 20 * sc, nsH - 18 * sc, sc);
+
+// ── ⭐️ 1. 식물 데스크 위로 렌더링 좌표 이동 ──
+  push();
+  let nsY_desk = H * 0.758; 
+  let floorY = H * 0.985;
+  let liftOffset = floorY - nsY_desk;
+  
+  // 바닥에 있던 화분을 데스크 높이만큼 끌어올리고 눈에 띄게 왼쪽으로 아주 살짝 이동합니다.
+  translate(W * -0.05, -liftOffset); 
+  
+  let rplX = W * 0.968, rplY = H * 0.89;
   drawingContext.fillStyle = 'rgba(0,0,0,0.28)';
-  ellipse(rplX, H * 0.985, 64 * sc, 14 * sc);
+  ellipse(rplX, rplY + 68 * sc, 64 * sc, 14 * sc);
+
   let rPotGrad = drawingContext.createLinearGradient(rplX - 32 * sc, rplY, rplX + 32 * sc, rplY);
   rPotGrad.addColorStop(0,   'rgb(50,40,30)');
   rPotGrad.addColorStop(0.4, 'rgb(35,28,20)');
@@ -1168,55 +1137,9 @@ function drawScene() {
     noStroke();
     pop();
   }
-
-  // ── DESK SURFACE ──────────────────────────────────────────
-  let deskY = H * 0.948;
-  let deskGrad = drawingContext.createLinearGradient(0, deskY, 0, H);
-  deskGrad.addColorStop(0,   'rgb(24,19,14)');
-  deskGrad.addColorStop(0.2, 'rgb(18,14,10)');
-  deskGrad.addColorStop(1,   'rgb(9,7,5)');
-  drawingContext.fillStyle = deskGrad;
-  rect(0, deskY, W, H - deskY);
-  let deskEdge = drawingContext.createLinearGradient(0, deskY, W, deskY);
-  deskEdge.addColorStop(0,    'rgba(255,195,90,0.22)');
-  deskEdge.addColorStop(0.35, 'rgba(255,185,80,0.12)');
-  deskEdge.addColorStop(0.6,  'rgba(255,195,90,0.18)');
-  deskEdge.addColorStop(1,    'rgba(255,175,70,0.08)');
-  drawingContext.fillStyle = deskEdge;
-  rect(0, deskY, W, 3 * sc);
-  let deskRefl = drawingContext.createLinearGradient(0, deskY, 0, deskY + H * 0.06);
-  deskRefl.addColorStop(0, 'rgba(255,185,75,0.09)');
-  deskRefl.addColorStop(1, 'rgba(0,0,0,0)');
-  drawingContext.fillStyle = deskRefl;
-  rect(0, deskY, W, H * 0.06);
-
-  // ── BOTTOM-LEFT: BOOKS + MUG ──────────────────────────────
-  // Photo: books stand on desk left side, mug next to them
-  drawBooksLeft(W * 0.025, deskY, sc);
-  drawMug(W * 0.115, deskY - 52 * sc, sc);
-
-  // ── BOTTOM-RIGHT: NIGHTSTAND ──────────────────────────────
-  // Photo: nightstand fills right side below mirror, lamp on top
-  let nsX = W * 0.760, nsY = H * 0.758;
-  let nsW = W * 0.248, nsH = H * 0.242;
-  drawingContext.fillStyle = 'rgba(0,0,0,0.45)';
-  rect(nsX + 6 * sc, nsY + 6 * sc, nsW, nsH, 4 * sc);
-  let nsGrad = drawingContext.createLinearGradient(nsX, nsY, nsX + nsW, nsY + nsH);
-  nsGrad.addColorStop(0, 'rgb(26,21,16)');
-  nsGrad.addColorStop(1, 'rgb(16,13,9)');
-  drawingContext.fillStyle = nsGrad;
-  rect(nsX, nsY, nsW, nsH, 4 * sc);
-  fill(30, 25, 18); noStroke();
-  rect(nsX + 7 * sc, nsY + 7 * sc, nsW - 14 * sc, nsH - 14 * sc, 2 * sc);
-  stroke(50, 42, 32); strokeWeight(0.7 * sc); noFill();
-  rect(nsX + 7 * sc, nsY + 7 * sc, nsW - 14 * sc, nsH - 14 * sc, 2 * sc);
-  noStroke();
-  fill(18, 14, 10);
-  rect(nsX + 7 * sc, nsY + nsH * 0.5 - 1.5 * sc, nsW - 14 * sc, 3 * sc);
-  drawBooksRight(nsX + 10 * sc, nsY + 9 * sc, nsW - 20 * sc, nsH - 18 * sc, sc);
+  pop();
 
   // ── TABLE LAMP ────────────────────────────────────────────
-  // Photo: white cylindrical lamp on nightstand, glowing warm
   let lampX = W * 0.832, lampY = nsY - 66 * sc;
   let lampW = 50 * sc, lampH = 72 * sc;
 
@@ -1466,12 +1389,10 @@ function drawBooksRight(x, y, w, h, sc) {
   pop()
 }
 
-
 // ════════════════════════════════════════════════════════
 //  AMBIENT ROOM GLOW (behind mirror)
 // ════════════════════════════════════════════════════════
 function drawAmbientRoom() {
-  // Mirror will be centred around W*0.27 → W*0.75
   let cx = W * 0.27 + W * 0.48 / 2;
   let cy = H * 0.10 + H * 0.95 / 2;
   noStroke();
@@ -1486,16 +1407,10 @@ function drawAmbientRoom() {
 //  MIRROR
 // ════════════════════════════════════════════════════════
 function drawMirror() {
-  // Photo analysis:
-  //   Mirror left edge  ≈ W * 0.27
-  //   Mirror right edge ≈ W * 0.755
-  //   Mirror top        ≈ H * 0.04
-  //   Mirror extends past bottom of canvas
-
   let mX = W * 0.2568;
   let mY = H * 0.0735;
-  let mW = W * 0.467;    // ~50% of width
-  let mH = H * 1.02;     // taller than canvas so bottom clips
+  let mW = W * 0.467;    
+  let mH = H * 1.02;     
   let cut = mW * 0.088;
 
   let pts = [
@@ -1509,67 +1424,47 @@ function drawMirror() {
     [mX,             mY + cut],
   ];
 
-  // 1. Drop shadows
   noStroke();
   fill(0, 0, 0, 40); drawShape(pts, 20, 24);
   fill(0, 0, 0, 26); drawShape(pts, 12, 15);
   fill(0, 0, 0, 14); drawShape(pts, 5, 7);
 
-  // 2. Frame base (thick dark gold undercoat)
   stroke(90, 72, 30); strokeWeight(30); strokeJoin(MITER); noFill();
   drawShape(pts, 0, 0);
 
-  // 3. Webcam mirror
-
+  // ⭐️ 장비가 거울 안쪽에서만 보이도록 클리핑 영역 안쪽으로 로직 이동
   drawingContext.save();
-
   drawingContext.beginPath();
-
   drawingContext.moveTo(pts[0][0], pts[0][1]);
-
   for(let i=1;i<pts.length;i++){
-    drawingContext.lineTo(
-      pts[i][0],
-      pts[i][1]
-    );
+    drawingContext.lineTo(pts[i][0], pts[i][1]);
   }
-
   drawingContext.closePath();
   drawingContext.clip();
 
   imageMode(CORNER);
   image(video, mX, mY, mW, mH);
 
-if (poses.length > 0) {
+  if (poses.length > 0) {
     let pose = poses[0];
     drawEquipment(mapPoseToFrame(pose));
   }
 
-  drawingContext.restore();
+  drawingContext.restore();  
 
-  
-  
-
-  
-
-  // 6. White matte inner border
   noFill(); stroke(255, 255, 255, 12); strokeWeight(10); strokeJoin(MITER);
   drawShape(pts, 0, 0);
 
-  // 7. Gold frame — dark base stroke
   stroke(100, 78, 28); strokeWeight(14); strokeJoin(MITER); noFill();
   drawShape(pts, 0, 0);
 
-  // 8. Gold frame — main colour
   stroke(190, 158, 82); strokeWeight(9);
   drawShape(pts, 0, 0);
 
-  // 9. Gold frame — highlight (top/left edges)
   stroke(235, 210, 140); strokeWeight(2.8);
   line(pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
   line(pts[7][0], pts[7][1], pts[0][0], pts[0][1]);
 
-  // 10. Inner double line
   let innerPts = padShape(pts, -13);
   noFill(); stroke(160, 130, 58, 200); strokeWeight(1.0);
   drawShape(innerPts, 0, 0);
@@ -1577,12 +1472,10 @@ if (poses.length > 0) {
   stroke(130, 104, 42, 120); strokeWeight(0.6);
   drawShape(innerPts2, 0, 0);
 
-  // 11. Outer thin double line
   let outerLinePts = padShape(pts, 11);
   stroke(150, 118, 48, 130); strokeWeight(0.8);
   drawShape(outerLinePts, 0, 0);
 
-  // 12. Corner jewel points
   for (let i = 0; i < pts.length; i++) {
     let p = pts[i];
     stroke(240, 215, 150, 220); strokeWeight(3.5);
@@ -1596,72 +1489,10 @@ if (poses.length > 0) {
     point(mx, my);
   }
 
-  // 13. Top micro highlight
   noFill(); stroke(255, 248, 220, 60); strokeWeight(0.8);
   let topHighPts = padShape(pts, -4);
   line(topHighPts[0][0], topHighPts[0][1], topHighPts[1][0], topHighPts[1][1]);
   line(topHighPts[7][0], topHighPts[7][1], topHighPts[0][0], topHighPts[0][1]);
-
-  // 14. Smart mirror UI — clock
-  let txtX = mX + mW * 0.10;
-  let txtY = mY + mH * 0.088;
-  drawClockUI(txtX, txtY, mW, mH);
-
-  // 15. Smart mirror UI — weather widget
-  drawWeatherWidget(mX + mW * 0.10, mY + mH * 0.815, mW);
-}
-
-// ════════════════════════════════════════════════════════
-//  CLOCK UI
-// ════════════════════════════════════════════════════════
-function drawClockUI(x, y, mW, mH) {
-  fill(200, 185, 145, 170); noStroke();
-  textSize(13);
-  textStyle(NORMAL);
-  text('2026  •  05  •  30', x, y);
-
-  fill(170, 155, 115, 130);
-  textSize(11);
-  text('W E D N E S D A Y', x, y + 18);
-
-  noFill();
-  stroke(196, 166, 97, 100); strokeWeight(0.6);
-  line(x, y + 26, x + 60, y + 26);
-  stroke(220, 196, 130, 180); strokeWeight(0.8);
-  line(x + 60, y + 26, x + 110, y + 26);
-  stroke(196, 166, 97, 80); strokeWeight(0.6);
-  line(x + 110, y + 26, x + 150, y + 26);
-
-  noStroke();
-  fill(220, 195, 120, 40);
-  textSize(68); textStyle(BOLD);
-  text('08:30', x - 3, y + 88);
-
-  fill(238, 218, 148, 240);
-  textSize(66);
-  text('08:30', x - 4, y + 86);
-
-  fill(180, 158, 95, 180);
-  textSize(12); textStyle(NORMAL);
-  text('AM', x + 200, y + 64);
-}
-
-// ════════════════════════════════════════════════════════
-//  WEATHER WIDGET
-// ════════════════════════════════════════════════════════
-function drawWeatherWidget(x, y, mW) {
-  noStroke();
-  fill(180, 165, 120, 140);
-  textSize(12); textStyle(NORMAL);
-  text('Seoul  ·  Partly Cloudy', x, y);
-
-  fill(220, 205, 155, 180);
-  textSize(26); textStyle(BOLD);
-  text('18°', x, y + 28);
-
-  fill(160, 148, 108, 120);
-  textSize(11); textStyle(NORMAL);
-  text('Feels like 16°   ↑22°  ↓12°', x, y + 55);
 }
 
 // ════════════════════════════════════════════════════════
