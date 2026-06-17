@@ -452,54 +452,63 @@ function getSwordTarget(pose) {
 }
 
 function drawTopBar() {
-  // 거울의 좌표를 동적으로 가져옵니다.
+  // 거울의 위치와 너비를 동적으로 가져옵니다.
   let mX = W * 0.2568;
   let mY = H * 0.0735;
   let mW = W * 0.467;
   
-  // 거울 안쪽 여백
-  let fx = mX + 60; 
-  let fy = mY + 30; 
+  // ⭐️ 1. 여백(Margin)을 고정 픽셀이 아닌 거울 너비(mW)에 비례하게 설정
+  // 거울 모서리(cut)를 피해서 안전하게 안쪽에 배치되도록 너비의 12%, 5%로 설정합니다.
+  let marginX = mW * 0.12; 
+  let marginY = mW * 0.05; 
+
+  let fx = mX + marginX; 
+  let fy = mY + marginY; 
+
+  // ⭐️ 2. 폰트 사이즈도 거울 너비(mW)에 비례해서 자동으로 줄어들고 커지게 만듭니다.
+  // max(계산값, 최소픽셀)을 써서 화면이 너무 작아져도 글씨가 찌그러지지 않게 방어합니다.
+  let dateSize = max(mW * 0.016, 10); 
+  let timeSize = max(mW * 0.026, 14);
+  let infoSize = max(mW * 0.020, 12);
 
   let dateStr = `${year()}. ${nf(month(), 2)}. ${nf(day(), 2)}.`;
   let timeStr = `${nf(hour(), 2)}:${nf(minute(), 2)}:${nf(second(), 2)}`;
 
   push();
-  // ⭐️ 텍스트 가독성 마법: Canvas API 상태를 저장하고 진한 그림자를 생성합니다.
+  // 텍스트 가독성 마법 (그림자)
   drawingContext.save();
   drawingContext.shadowOffsetX = 1;
   drawingContext.shadowOffsetY = 2;
   drawingContext.shadowBlur = 10;
-  drawingContext.shadowColor = 'rgba(0, 0, 0, 0.9)'; // 진한 검은색 그림자
+  drawingContext.shadowColor = 'rgba(0, 0, 0, 0.9)'; 
 
   textAlign(LEFT, TOP);
   
-  // 1. 날짜 텍스트 (크기 살짝 키움)
-  textSize(14);
+  // 날짜 텍스트
+  textSize(dateSize);
   fill(255, 255, 255, 230); 
   text(dateStr, fx, fy);
   
-  // 2. 시간 텍스트 (크기, 굵기 강화)
-  textSize(22);
+  // 시간 텍스트 (날짜 폰트 크기에 맞춰 간격을 자동으로 조절)
+  textSize(timeSize);
   textStyle(BOLD);
   fill(255, 255, 255, 255);
-  text(timeStr, fx, fy + 20);
+  text(timeStr, fx, fy + dateSize * 1.5);
 
-  // 3. 중앙 거울 진행도 표시
+  // 중앙 거울 진행도 표시
   fill(255, 255, 255, 255);
   textAlign(CENTER, TOP);
-  textSize(18);
-  text(`${itemCount} / 6`, mX + mW / 2, fy + 8);
+  textSize(infoSize);
+  text(`${itemCount} / 6`, mX + mW / 2, fy);
   
-  // 4. 우측 요일 표시
+  // 우측 요일 표시 (거울 오른쪽 끝에서 marginX만큼 안쪽으로 들어옴)
   if (selectedDay !== "") {
     fill(255, 210, 60);
     textAlign(RIGHT, TOP);
-    textSize(18);
-    text(LABELS[currentDayIndex], mX + mW - 60, fy + 8);
+    textSize(infoSize);
+    text(LABELS[currentDayIndex], mX + mW - marginX, fy);
   }
 
-  // ⭐️ 중요: 그림자 효과가 다른 요소에 번지지 않도록 복구합니다.
   drawingContext.restore();
   pop();
 }
