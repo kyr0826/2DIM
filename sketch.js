@@ -336,8 +336,6 @@ function windowResized() {
 function draw() {
   randomSeed(seed);  
 
-  updateAndDrawEffects();
-
   drawScene();
   drawAmbientRoom();
   drawMirror();
@@ -1484,6 +1482,8 @@ function drawMirror() {
     drawEquipment(mapPoseToFrame(pose));
   }
 
+  updateAndDrawEffects();
+  
   drawingContext.restore();  
 
   noFill(); stroke(255, 255, 255, 12); strokeWeight(10); strokeJoin(MITER);
