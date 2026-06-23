@@ -64,6 +64,10 @@ let armorAnimators = [null, null, null, null, null, null];
 let impactParticles = [];
 let impactRings = [];
 
+// ── 최종 완료 시퀀스(거울 인증) 관련 변수 ─────────────
+let completionSeq = null;
+let lastMappedPose = null;
+
 // ── 파티클 클래스 ─────────────────────────────
 class ImpactParticle {
   constructor(x, y, color) {
@@ -291,6 +295,151 @@ class ArmorAnimator {
 
 function setLineDash(list) {
   drawingContext.setLineDash(list);
+}
+
+// ════════════════════════════════════════════════════════
+//  FINAL COMPLETION SEQUENCE
+//  "Preparation has been verified." — a calm, ceremonial
+//  confirmation that plays once, after the last armor piece
+//  attaches. No sparks, no lightning — just a soft contour
+//  tracing the user's silhouette from the chest outward.
+// ════════════════════════════════════════════════════════
+
+function easeOutCubic(t) { return 1 - pow(1 - t, 3); }
+function easeInOutSine(t) { return -(cos(PI * t) - 1) / 2; }
+
+class CompletionSequence {
+  constructor() {
+    this.phase = "textIn";
+    this.phaseStart = millis();
+    this.durations = {
+      
+      textIn:   500,   // STEP 6 (in)
+      textHold: 2000,  // STEP 6 (hold) — "approximately 2 seconds"
+      textOut:  700,   // STEP 7 — gentle fade out
+    };
+    this.order = ["textIn", "textHold", "textOut", "done"];
+  }
+
+  elapsed() { return millis() - this.phaseStart; }
+
+  progress() {
+    let d = this.durations[this.phase];
+    if (!d) return 1;
+    return constrain(this.elapsed() / d, 0, 1);
+  }
+
+  update() {
+    if (this.phase === "done") return;
+    let d = this.durations[this.phase];
+    if (this.elapsed() >= d) {
+      let idx = this.order.indexOf(this.phase);
+      this.phase = this.order[idx + 1];
+      this.phaseStart = millis();
+    }
+  }
+
+  isDone() { return this.phase === "done"; }
+}
+
+// Builds a soft, ordered outline (head → arms → torso) from the
+// current pose so the energy contour can trace the user's own
+// silhouette rather than a generic shape.
+
+
+// Draws text with manual letter-spacing for a premium, tracked-out feel.
+function drawTrackedText(str, cx, cy, size, spacing, col) {
+  push();
+  textSize(size);
+  textStyle(NORMAL);
+  textAlign(LEFT, CENTER);
+
+  let chars = Array.from(str);
+  let widths = chars.map(ch => textWidth(ch));
+  let totalW = widths.reduce((a, b) => a + b, 0) + spacing * (chars.length - 1);
+
+  let x = cx - totalW / 2;
+  fill(col);
+  noStroke();
+  for (let i = 0; i < chars.length; i++) {
+    text(chars[i], x, cy);
+    x += widths[i] + spacing;
+  }
+  pop();
+}
+
+// STEP 6/7 — the mirror's quiet acknowledgement.
+function drawReadyText(seq) {
+  let mX = W * 0.2568;
+  let mY = H * 0.0735;
+  let mW = W * 0.467;
+  let mH = H * 1.02;
+
+  let cx = mX + mW / 2;
+  let cy = mY + mH * 0.46;
+
+  let alpha;
+  if (seq.phase === "textIn") {
+    alpha = easeInOutSine(seq.progress());
+  } else if (seq.phase === "textOut") {
+    alpha = 1 - easeInOutSine(seq.progress());
+  } else {
+    alpha = 1;
+  }
+  if (alpha <= 0.002) return;
+
+  let revealT = (seq.phase === "textIn") ? easeOutCubic(seq.progress()) : 1;
+
+  push();
+
+  // A thin accent line unfolds first — a quiet, deliberate cue.
+  let lineW = mW * 0.16 * revealT;
+  stroke(225, 235, 245, 200 * alpha);
+  strokeWeight(1);
+  line(cx - lineW / 2, cy - mH * 0.065, cx + lineW / 2, cy - mH * 0.065);
+
+  drawingContext.save();
+  drawingContext.shadowOffsetX = 0;
+  drawingContext.shadowOffsetY = 0;
+  drawingContext.shadowBlur = 18;
+  drawingContext.shadowColor = `rgba(210,230,255,${(0.55 * alpha).toFixed(3)})`;
+
+  let titleSize = max(mW * 0.052, 16);
+  drawTrackedText(
+    "READY FOR BATTLE",
+    cx, cy,
+    titleSize,
+    titleSize * 0.32,
+    color(248, 248, 250, 255 * alpha)
+  );
+
+  drawingContext.shadowBlur = 6;
+  let subSize = max(mW * 0.028, 10);
+  drawTrackedText(
+    "오늘 하루 건투를 비네.",
+    cx, cy + titleSize * 1.35,
+    subSize,
+    subSize * 0.06,
+    color(205, 210, 218, 220 * alpha)
+  );
+
+  drawingContext.restore();
+  pop();
+}
+
+// Routes the current phase of the sequence to its visual.
+function drawCompletionSequence(pose) {
+  if (!completionSeq) return;
+
+  switch (completionSeq.phase) {
+    case "textIn":
+    case "textHold":
+    case "textOut":
+      drawReadyText(completionSeq);
+      break;
+    default:
+      break;
+  }
 }
 
 function preload() {
@@ -815,6 +964,9 @@ function drawEquipment(pose) {
 
     if (anim.phase === "done") {
       armorAnimators[slotIdx] = null;
+      if (slotIdx === 5 && !completionSeq) {
+        completionSeq = new CompletionSequence();
+      }
     }
   }
   pop();
@@ -1478,11 +1630,19 @@ function drawMirror() {
   image(video, mX, mY, mW, mH);
 
   if (poses.length > 0) {
-    let pose = poses[0];
-    drawEquipment(mapPoseToFrame(pose));
+    lastMappedPose = mapPoseToFrame(poses[0]);
+  }
+  if (lastMappedPose) {
+    drawEquipment(lastMappedPose);
   }
 
   updateAndDrawEffects();
+
+  if (completionSeq) {
+    completionSeq.update();
+    drawCompletionSequence(lastMappedPose);
+    if (completionSeq.isDone()) completionSeq = null;
+  }
   
   drawingContext.restore();  
 
